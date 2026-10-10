@@ -105,6 +105,8 @@ export function collectRig(root) {
       entry.axisX = new Vector3(1, 0, 0).applyQuaternion(relInv).normalize()
       /** Local axis to rotate about for lateral sway. */
       entry.axisZ = new Vector3(0, 0, 1).applyQuaternion(relInv).normalize()
+      /** Local axis to rotate about for turning (yaw), e.g. bringing a hand inward. */
+      entry.axisY = new Vector3(0, 1, 0).applyQuaternion(relInv).normalize()
     }
 
     rig.hatBone = skeleton.bones.find((b) => b.name === HAT_BONE) || null
@@ -302,14 +304,22 @@ export function applyProportions(rig, proportions) {
  * driven directly on the bones. Rotations are *multiplied onto* whatever
  * applyProportions() just wrote, so this must run immediately after it in the
  * same frame - proportions reset each bone to its rest pose, which is exactly
- * the clean base a pose needs.
+ * the clean base a pose needs. The rest pose has the arms hanging straight down.
  * ------------------------------------------------------------------------- */
 
 const _animQ = new Quaternion()
 
 /**
+ * How far the chest leans in when crouched (radians). The caller lowers the
+ * model by CROUCH_DROP (metres, at the game's 1.8 m scale) so the planted foot
+ * and the kneeling knee meet the ground.
+ */
+export const CROUCH_LEAN = 0.4
+export const CROUCH_DROP = 0.335
+
+/**
  * Rotates a bone about one of its precomputed character-space axes.
- * `which` is 'axisX' (forward/back swing) or 'axisZ' (lateral sway).
+ * `which` is 'axisX' (forward/back swing), 'axisZ' (lateral sway) or 'axisY' (twist).
  */
 function rotateBone(rig, name, which, angle) {
   if (!angle) return
@@ -319,69 +329,263 @@ function rotateBone(rig, name, which, angle) {
   entry.bone.quaternion.multiply(_animQ.setFromAxisAngle(axis, angle))
 }
 
-/** Swing a limb forward/back - the plane a walk cycle actually moves in. */
+/**
+ * Swing a bone forward/back - the plane a walk cycle actually moves in. Signs:
+ * negative swings a hanging limb (arm, leg) forward; positive tips an upright
+ * bone (spine, neck) forward, negative tips it back.
+ */
 const swing = (rig, name, angle) => rotateBone(rig, name, 'axisX', angle)
 /** Sway a limb out to the side. */
 const sway = (rig, name, angle) => rotateBone(rig, name, 'axisZ', angle)
+/** Turn about the vertical axis (blading the torso, turning the head). */
+const twist = (rig, name, angle) => rotateBone(rig, name, 'axisY', angle)
 
 /**
  * Poses the rig for the current motion state.
  *
  * @param {object} rig from `collectRig`
- * @param {{ time: number, speed: number, grounded: boolean, maxSpeed: number }} motion
+ * @param {{ time: number, speed: number, grounded: boolean, maxSpeed: number,
+ *           aim?: boolean, pitch?: number, crouch?: boolean, climbing?: boolean,
+ *           melee?: number, prone?: number, slide?: number, blade?: number,
+ *           ik?: object|null }} motion
  *   `speed` is horizontal speed in world units/sec; `maxSpeed` is what counts as a
  *   full-amplitude run, so the cycle scales smoothly from a walk to a sprint.
+ *   `aim` raises both arms (used only when no `ik` targets are given).
+ *   `prone` / `slide` are 0..1 blends; `blade` turns the torso (radians) for a
+ *   shooter's stance while the head keeps looking ahead.
+ *   With `ik`, the arms are left alone here and solved onto the weapon afterwards.
  */
 export function animateRig(rig, motion) {
   if (!rig?.skeleton || !motion) return
 
-  const { time = 0, speed = 0, grounded = true, maxSpeed = 6 } = motion
+  const {
+    time = 0,
+    speed = 0,
+    grounded = true,
+    maxSpeed = 6,
+    aim = false,
+    pitch = 0,
+    crouch = false,
+    climbing = false,
+    melee = 0,
+    prone = 0,
+    slide = 0,
+    blade = 0,
+    ik = null,
+  } = motion
   const ratio = Math.min(speed / Math.max(maxSpeed, 0.001), 1)
+  const armsFree = !ik
 
   rig.root.position.y = rig.rootRestY
 
-  // --- Airborne: tuck the legs, throw the arms up ---------------------------
-  if (!grounded) {
+  // Dev aid (AvatarPreview probe mode): apply raw rotations and nothing else.
+  if (motion.probe) {
+    for (const [bone, axis, angle] of motion.probe) rotateBone(rig, bone, axis, angle)
+    return
+  }
+
+  if (climbing) {
+    // Hand over hand up the ladder.
+    const c = Math.sin(time * 7)
+    swing(rig, 'ArmL1', -2.5 + c * 0.35)
+    swing(rig, 'ArmR1', -2.5 - c * 0.35)
+    swing(rig, 'LegL1', -0.6 + c * 0.4)
+    swing(rig, 'LegR1', -0.6 - c * 0.4)
+    swing(rig, 'LegL2', 0.9)
+    swing(rig, 'LegR2', 0.9)
+    return
+  }
+
+  if (prone > 0.5) {
+    // Lying on the belly (the caller tips the body over), propped up on the
+    // elbows: chest raised, head up behind the gun, legs apart with the feet
+    // turned out. Crawling scissors the legs and works the knees.
+    const crawl = Math.sin(time * 6) * Math.min(1, ratio * 3)
+    sway(rig, 'LegL1', -0.2 + crawl * 0.16)
+    sway(rig, 'LegR1', 0.2 + crawl * 0.16)
+    swing(rig, 'LegL2', 0.1 + Math.max(0, crawl) * 0.7)
+    swing(rig, 'LegR2', 0.25 + Math.max(0, -crawl) * 0.7)
+    // Body is face-down: tipping the spine "back" raises the chest off the ground,
+    // tipping the neck back brings the face up to look along the ground.
+    swing(rig, 'Spine1', -0.24)
+    swing(rig, 'Neck1', -1.1 - pitch * 0.4)
+    if (armsFree) {
+      swing(rig, 'ArmL1', -2.6)
+      swing(rig, 'ArmR1', -2.6)
+    }
+    return
+  }
+
+  if (slide > 0.05) {
+    // Feet first, leaning back.
+    swing(rig, 'LegL1', -1.45 * slide)
+    swing(rig, 'LegR1', -1.1 * slide)
+    swing(rig, 'LegR2', 1.2 * slide)
+    swing(rig, 'Spine1', -0.32 * slide)
+  }
+
+  // --- Legs (and arms when free) -------------------------------------------------
+  if (slide > 0.5) {
+    // Held above.
+  } else if (!grounded) {
     swing(rig, 'LegL1', -0.55)
     swing(rig, 'LegL2', 0.75)
     swing(rig, 'LegR1', 0.3)
     swing(rig, 'LegR2', 0.2)
-    swing(rig, 'ArmL1', -2.1)
-    swing(rig, 'ArmR1', -2.1)
+    if (armsFree && !aim) {
+      sway(rig, 'ArmL1', -0.5)
+      sway(rig, 'ArmR1', 0.5)
+    }
     swing(rig, 'Spine1', -0.1)
-    return
-  }
-
-  // --- Standing still: a slow breathing sway --------------------------------
-  if (ratio < 0.04) {
+  } else if (crouch) {
+    // Low ready: still, it's a kneel (left foot planted, right knee down);
+    // moving, a bent-knee duck walk. Blended so starting to move flows.
+    const k = Math.min(1, ratio * 4)
+    const phase = time * 7
+    const c = Math.sin(phase) * k
+    swing(rig, 'LegL1', -1.45 + (1.45 - 1.05) * k + c * 0.35)
+    swing(rig, 'LegL2', 1.45 + Math.max(0, -c) * 0.5)
+    swing(rig, 'LegR1', -1.1 + (1.1 - 1.05) * k - c * 0.35)
+    swing(rig, 'LegR2', 2.5 + (1.45 - 2.5) * k + Math.max(0, c) * 0.5)
+    swing(rig, 'Spine1', CROUCH_LEAN)
+    // Keep the eyes level while the chest leans in.
+    swing(rig, 'Neck1', -CROUCH_LEAN * 0.85)
+    rig.root.position.y = rig.rootRestY + Math.abs(Math.cos(phase)) * 0.06 * k
+  } else if (ratio < 0.04) {
     const idle = Math.sin(time * 1.6)
-    sway(rig, 'ArmL1', -0.07 - idle * 0.03)
-    sway(rig, 'ArmR1', 0.07 + idle * 0.03)
+    if (armsFree && !aim) {
+      sway(rig, 'ArmL1', -0.07 - idle * 0.03)
+      sway(rig, 'ArmR1', 0.07 + idle * 0.03)
+    }
     swing(rig, 'Spine1', idle * 0.02)
     rig.root.position.y = rig.rootRestY + idle * 0.03
-    return
+  } else {
+    // Step frequency rises with speed so a sprint doesn't look like a moonwalk.
+    const phase = time * (5 + ratio * 5)
+    const cycle = Math.sin(phase)
+    const legAmp = (crouch ? 0.5 : 0.85) * ratio
+    const armAmp = 0.7 * ratio
+
+    // Legs swing in opposition; knees fold on the backswing only.
+    swing(rig, 'LegL1', cycle * legAmp)
+    swing(rig, 'LegR1', -cycle * legAmp)
+    swing(rig, 'LegL2', Math.max(0, -cycle) * 1.1 * ratio)
+    swing(rig, 'LegR2', Math.max(0, cycle) * 1.1 * ratio)
+
+    if (armsFree && !aim) {
+      swing(rig, 'ArmL1', -cycle * armAmp)
+      swing(rig, 'ArmR1', cycle * armAmp)
+      swing(rig, 'ArmL2', -Math.max(0, cycle) * 0.5 * ratio)
+      swing(rig, 'ArmR2', -Math.max(0, -cycle) * 0.5 * ratio)
+    }
+
+    // Lean into the run, and bob once per step (twice per full cycle).
+    swing(rig, 'Spine1', 0.14 * ratio)
+    rig.root.position.y = rig.rootRestY + Math.abs(Math.cos(phase)) * 0.18 * ratio
   }
 
-  // --- Walk / run cycle -----------------------------------------------------
-  // Step frequency rises with speed so a sprint doesn't look like a moonwalk.
-  const phase = time * (5 + ratio * 5)
-  const cycle = Math.sin(phase)
-  const legAmp = 0.85 * ratio
-  const armAmp = 0.7 * ratio
+  // --- Upper body ---------------------------------------------------------------
+  // Shooter's stance: torso bladed, head turned back to face the target.
+  if (blade) {
+    twist(rig, 'Spine1', blade)
+    twist(rig, 'Neck1', -blade * 0.85)
+  }
+  if (armsFree) {
+    if (aim) {
+      swing(rig, 'ArmL1', -1.5 - pitch * 0.9)
+      swing(rig, 'ArmR1', -1.38 - pitch * 0.9 - melee * 0.9)
+    } else if (melee > 0) {
+      swing(rig, 'ArmR1', -0.5 - Math.sin(melee * Math.PI) * 1.6)
+    }
+  }
 
-  // Legs swing in opposition; knees fold on the backswing only.
-  swing(rig, 'LegL1', cycle * legAmp)
-  swing(rig, 'LegR1', -cycle * legAmp)
-  swing(rig, 'LegL2', Math.max(0, -cycle) * 1.1 * ratio)
-  swing(rig, 'LegR2', Math.max(0, cycle) * 1.1 * ratio)
+  // Look up/down: mostly the head, a little through the chest.
+  swing(rig, 'Spine2', -pitch * 0.25)
+  swing(rig, 'Neck1', -pitch * 0.6)
+}
 
-  // Arms counter-swing against the legs.
-  swing(rig, 'ArmL1', -cycle * armAmp)
-  swing(rig, 'ArmR1', cycle * armAmp)
-  swing(rig, 'ArmL2', Math.max(0, cycle) * 0.5 * ratio)
-  swing(rig, 'ArmR2', Math.max(0, -cycle) * 0.5 * ratio)
+/* ---------------------------------------------------------------------------
+ * Two-bone arm IK: puts a hand on a world-space target
+ * ------------------------------------------------------------------------- */
 
-  // Lean into the run, and bob once per step (twice per full cycle).
-  swing(rig, 'Spine1', -0.14 * ratio)
-  rig.root.position.y = rig.rootRestY + Math.abs(Math.cos(phase)) * 0.18 * ratio
+const _s = new Vector3()
+const _e = new Vector3()
+const _w = new Vector3()
+const _t = new Vector3()
+const _p = new Vector3()
+const _u = new Vector3()
+const _v = new Vector3()
+const _elbow = new Vector3()
+const _hand = new Vector3()
+const _qa = new Quaternion()
+const _qb = new Quaternion()
+const _qp = new Quaternion()
+
+/** Rotates `bone` (in world terms) so the point `from` on it swings onto the line toward `to`. */
+function aimBone(bone, from, to) {
+  bone.getWorldPosition(_s)
+  _u.copy(from).sub(_s)
+  _v.copy(to).sub(_s)
+  if (_u.lengthSq() < 1e-10 || _v.lengthSq() < 1e-10) return
+  _qa.setFromUnitVectors(_u.normalize(), _v.normalize())
+  bone.getWorldQuaternion(_qb).premultiply(_qa)
+  bone.parent.getWorldQuaternion(_qp)
+  bone.quaternion.copy(_qp.invert().multiply(_qb))
+  bone.updateMatrixWorld(true)
+}
+
+/**
+ * Bends one arm so its hand reaches `target` (world space), elbow toward `pole`.
+ * Out-of-reach targets get a straight arm pointing at them.
+ *
+ * @param {'L'|'R'} side
+ */
+export function solveArm(rig, side, target, pole) {
+  const upper = rig.bones[`Arm${side}1`]?.bone
+  const lower = rig.bones[`Arm${side}2`]?.bone
+  const end = rig.bones[`Arm${side}2_leaf`]?.bone
+  if (!upper || !lower || !end || !target) return
+
+  upper.getWorldPosition(_s)
+  lower.getWorldPosition(_e)
+  end.getWorldPosition(_w)
+  const shoulder = _t.copy(_s)
+  const l1 = shoulder.distanceTo(_e)
+  const l2 = _e.distanceTo(_w)
+  if (l1 < 1e-5 || l2 < 1e-5) return
+
+  const toTarget = _hand.copy(target).sub(shoulder)
+  const raw = toTarget.length()
+  if (raw < 1e-5) return
+  const dir = toTarget.divideScalar(raw)
+  const d = Math.min(Math.max(raw, Math.abs(l1 - l2) + 1e-3), (l1 + l2) * 0.999)
+
+  // Bend plane: toward the pole, perpendicular to the shoulder->hand line.
+  _p.copy(pole ?? _p.set(0, -1, 0).add(shoulder)).sub(shoulder)
+  _p.addScaledVector(dir, -_p.dot(dir))
+  if (_p.lengthSq() < 1e-8) _p.set(0, -1, 0).addScaledVector(dir, -dir.y)
+  _p.normalize()
+
+  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d)
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a))
+  _elbow.copy(shoulder).addScaledVector(dir, a).addScaledVector(_p, h)
+  const handPos = _v.copy(shoulder).addScaledVector(dir, d)
+  const handTarget = _w.copy(handPos)
+
+  aimBone(upper, _e, _elbow)
+  lower.getWorldPosition(_e)
+  end.getWorldPosition(_u)
+  const tip = _p.copy(_u)
+  aimBone(lower, tip, handTarget)
+}
+
+/**
+ * Solves both arms onto the targets in `ik` ({ right, left, poleR, poleL }, all
+ * world-space Vector3s; any may be null). Call after `animateRig`.
+ */
+export function solveArms(rig, ik) {
+  if (!rig?.skeleton || !ik) return
+  rig.root.updateWorldMatrix(true, true)
+  if (ik.right) solveArm(rig, 'R', ik.right, ik.poleR)
+  if (ik.left) solveArm(rig, 'L', ik.left, ik.poleL)
 }

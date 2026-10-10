@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import BloxityProvider from './bloxity/BloxityProvider.jsx'
 import './index.css'
+import './debug.js'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

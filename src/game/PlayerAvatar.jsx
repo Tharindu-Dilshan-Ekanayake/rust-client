@@ -13,6 +13,7 @@ import {
 } from '../bloxity/avatarAssets'
 import { loadOBJ, loadPartGLB, loadTexture } from '../bloxity/avatarLoader'
 import { useBloxity } from '../bloxity/BloxityContext'
+import { DEFAULT_PROPORTIONS } from '../bloxity/store'
 import {
   animateRig,
   applyPart,
@@ -20,6 +21,7 @@ import {
   applySkin,
   attachAccessory,
   collectRig,
+  solveArms,
 } from './avatarRig'
 
 /**
@@ -33,7 +35,7 @@ function fallbackMotion(delta) {
 }
 
 /**
- * The player's own Bloxity avatar, assembled at runtime.
+ * A Bloxity avatar, assembled at runtime.
  *
  * `player.glb` is the base humanoid rig: six skinned meshes (head, torso, two arms,
  * two legs) sharing one skeleton. Assembly means, per equipped slot:
@@ -41,21 +43,27 @@ function fallbackMotion(delta) {
  *   - hat / back  -> attach an OBJ to the Neck1 / Spine2 bone
  *   - skin        -> set one texture as the map on every skinned mesh
  *
- * Any slot that is unequipped or 404s leaves the base body's own part in place. The
- * whole thing re-assembles when `onAvatarChanged` / `onProportionsChanged` fire, so
- * changing cosmetics in the Bloxity portal updates the character live.
+ * Any slot that is unequipped or 404s leaves the base body's own part in place.
  *
- * @param {{ onReady?: () => void, targetHeight?: number }} props
+ * By default it shows the signed-in player's own avatar (from the Bloxity context).
+ * Pass `equipped` / `proportions` to render someone else's — that's how remote
+ * players appear with their own cosmetics in a match.
+ *
+ * @param {{ onReady?: () => void, targetHeight?: number, equipped?: object|null,
+ *           proportions?: object, reportLoading?: boolean, motionRef?: object }} props
  *   `targetHeight` is the world-space height to fit the avatar into, in the game's
  *   own units. Bloxity authors the rig ~6.4 units tall with the feet at y=0, which is
  *   far bigger than a metric-scale physics capsule, so the model is measured and
  *   rescaled rather than trusted at native size.
  */
 export const PlayerAvatar = forwardRef(function PlayerAvatar(
-  { onReady, targetHeight = 1.8, motionRef, ...props },
+  { onReady, targetHeight = 1.8, motionRef, equipped: equippedProp, proportions: proportionsProp, reportLoading = false, ...props },
   ref,
 ) {
-  const { avatar: equipped, proportions, game } = useBloxity()
+  const ctx = useBloxity()
+  const equipped = equippedProp === undefined ? ctx.avatar : equippedProp
+  const proportions = proportionsProp === undefined ? ctx.proportions : { ...DEFAULT_PROPORTIONS, ...proportionsProp }
+  const { game } = ctx
   const { scene: baseScene } = useGLTF(BASE_BODY_URL)
   const [assembled, setAssembled] = useState(false)
 
@@ -75,6 +83,8 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
         metalness: 0,
         roughness: 1,
       })
+      // Skinned meshes animate outside their bind-pose bounds.
+      mesh.frustumCulled = false
     }
 
     if (!collected.skeleton) {
@@ -90,7 +100,7 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
     if (!Number.isFinite(size.y) || size.y <= 0) return { scale: 1, footOffset: 0 }
     const scale = targetHeight / size.y
     // The rig's feet sit at its bbox minimum; drop the group so they land on y=0
-    // of the parent (which Player positions at the bottom of the capsule).
+    // of the parent.
     return { scale, footOffset: -box.min.y * scale }
   }, [character, targetHeight])
 
@@ -101,7 +111,7 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
     // hat/back can be removed rather than stacking up.
     const attached = []
 
-    game.loadingStep('Loading avatar…')
+    if (reportLoading) game.loadingStep('Loading avatar…')
 
     const jobs = []
 
@@ -183,9 +193,9 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
         object.traverse((child) => child.geometry?.dispose())
       }
     }
-  }, [rig, equipped, game])
+  }, [rig, equipped, game, reportLoading])
 
-  // --- Proportions -------------------------------------------------------------
+  // --- Proportions + pose --------------------------------------------------------
   // Applied per frame rather than in an effect: every bone is reset to its rest pose
   // and re-scaled each pass, which keeps it idempotent and survives anything else
   // that touches the skeleton.
@@ -197,7 +207,10 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
       // Order matters: proportions reset every bone to its rest pose, and the
       // animation then rotates on top of that clean base.
       applyProportions(rig, proportionsRef.current)
-      animateRig(rig, motionRef?.current ?? fallbackMotion(delta))
+      const motion = motionRef?.current ?? fallbackMotion(delta)
+      animateRig(rig, motion)
+      // Hands onto the weapon (targets were placed by the owner this frame).
+      if (motion.ik) solveArms(rig, motion.ik)
     } catch {
       // A malformed payload must not kill the render loop.
     }
