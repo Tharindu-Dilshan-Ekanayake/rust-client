@@ -1,12 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import {
   AdditiveBlending,
   AmbientLight,
   BufferAttribute,
   BufferGeometry,
-  CanvasTexture,
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
@@ -14,16 +12,12 @@ import {
   HemisphereLight,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   Object3D,
   PerspectiveCamera,
-  RepeatWrapping,
   PointLight,
   Scene,
   Sprite,
   SpriteMaterial,
-  SRGBColorSpace,
-  Vector2,
   Vector3,
 } from 'three'
 
@@ -31,6 +25,7 @@ import { sfx } from '../../audio/sfx.js'
 import { ColorGrade } from '../ColorGrade.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { createWeaponModel, weaponMaterials } from '../models/weaponModels.js'
+import { makeArm, placeArm } from './arms.js'
 import { runtime } from '../runtime.js'
 import { SUN_DIR } from '../environment.js'
 import { flareTexture } from '../world/textures.js'
@@ -54,112 +49,39 @@ const POSES = {
   pistol: { hip: [0.11, -0.105, -0.25], rot: [0, 0.05, 0], eye: 0.15, opticEye: 0.12 },
   viper: { hip: [0.115, -0.11, -0.26], rot: [0, 0.05, 0], eye: 0.15, opticEye: 0.12 },
   hornet: { hip: [0.12, -0.115, -0.26], rot: [0, 0.05, 0], eye: 0.13, opticEye: 0.11 },
+  smg: { hip: [0.12, -0.125, -0.28], rot: [0, 0.045, 0], eye: 0.09, opticEye: 0.06 },
+  shotgun: { hip: [0.13, -0.13, -0.3], rot: [0, 0.04, 0], eye: 0.1, opticEye: 0.07 },
+  lmg: { hip: [0.14, -0.15, -0.32], rot: [0, 0.035, 0], eye: 0.08, opticEye: 0.06 },
+  // Any further out and the venturi at the back crosses the near plane.
+  rpg: { hip: [0.15, -0.125, -0.25], rot: [0, 0.03, 0], eye: 0.12 },
   knife: { hip: [0.13, -0.12, -0.28], ads: [0.13, -0.12, -0.28], rot: [0.42, 0.9, 0.18] },
 }
 /** Viewmodel kick multiplier per weapon. */
-const HEAVY = { sniper: 2.4, viper: 2.1, pistol: 1.4, hornet: 0.75 }
+const HEAVY = { sniper: 2.4, viper: 2.1, pistol: 1.4, hornet: 0.75, smg: 0.8, shotgun: 2.2, lmg: 1.1, rpg: 2.6 }
 /** Muzzle-flash sprite size (rig units) per weapon. */
-const FLASH_SIZE = { sniper: 0.42, viper: 0.34, pistol: 0.22, hornet: 0.2 }
+const FLASH_SIZE = { sniper: 0.42, viper: 0.34, pistol: 0.22, hornet: 0.2, smg: 0.24, shotgun: 0.5, lmg: 0.36, rpg: 0.6 }
+/** Casing thrown out of the port per weapon (none for the launcher). */
+const SHELL_KIND = { ar: 'rifle', lmg: 'rifle', sniper: 'sniper', shotgun: 'shotgun', smg: 'pistol', pistol: 'pistol', hornet: 'pistol' }
 /** Guns are modelled at real size; this keeps them from filling the screen. */
 const VM_SCALE = 0.6
 const GRIP = new Vector3(0, -0.06, 0.06)
 const ELBOW_R = new Vector3(0.22, -0.34, 0.06)
 const ELBOW_L = new Vector3(-0.18, -0.34, -0.02)
+const ELBOW_L_REACH = new Vector3(-0.3, -0.3, -0.2)
 
-/** Desert camo for the sleeves: tan base with olive and brown blotches. */
-function camoTexture() {
-  const c = document.createElement('canvas')
-  c.width = 128
-  c.height = 128
-  const ctx = c.getContext('2d')
-  ctx.fillStyle = '#a28d68'
-  ctx.fillRect(0, 0, 128, 128)
-  let seed = 7
-  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
-  for (const [color, count, size] of [['#6f6a46', 14, 26], ['#7d5f40', 10, 20], ['#c4b08a', 12, 14]]) {
-    ctx.fillStyle = color
-    for (let i = 0; i < count; i++) {
-      const x = rand() * 128
-      const y = rand() * 128
-      ctx.beginPath()
-      for (let k = 0; k < 7; k++) {
-        const a = (k / 7) * Math.PI * 2
-        const r = size * (0.45 + rand() * 0.55)
-        ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.7)
-      }
-      ctx.fill()
-    }
-  }
-  const t = new CanvasTexture(c)
-  t.colorSpace = SRGBColorSpace
-  t.wrapS = RepeatWrapping
-  t.wrapT = RepeatWrapping
-  t.repeat.set(1.5, 2)
-  return t
-}
-
-const gloveMat = new MeshStandardMaterial({
-  color: '#3d3a33',
-  roughness: 0.85,
-  normalMap: weaponMaterials.polymer.normalMap,
-  normalScale: new Vector2(0.5, 0.5),
-})
-const knuckleMat = new MeshStandardMaterial({ color: '#2a2925', roughness: 0.7 })
-const sleeveMat = new MeshStandardMaterial({ color: '#ffffff', map: camoTexture(), roughness: 0.95 })
-const cuffMat = new MeshStandardMaterial({ color: '#5e573f', roughness: 0.95 })
-
-const rounded = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 2, r)
-const handGeo = {
-  palm: rounded(0.05, 0.03, 0.05, 0.01),
-  fingers: rounded(0.048, 0.024, 0.036, 0.009),
-  knuckles: rounded(0.05, 0.008, 0.016, 0.003),
-  thumb: rounded(0.016, 0.018, 0.04, 0.007),
-  cuff: rounded(0.054, 0.04, 0.026, 0.008),
-  sleeve: (() => {
-    const g = rounded(0.062, 0.06, 1, 0.018)
-    // Pivot at the wrist; the sleeve extends toward the elbow along +Z.
-    g.translate(0, 0, 0.5)
-    return g
-  })(),
-  sleeveCuff: rounded(0.068, 0.066, 0.03, 0.014),
-}
-
-/**
- * One forearm + gloved hand. The group sits at the wrist and is turned so +Z
- * points at the elbow: fingers reach forward (-Z), curled down round the grip,
- * with the thumb on the inside (`side` -1 left arm, 1 right arm).
- */
-function makeArm(side) {
-  const arm = new Group()
-  const add = (geo, mat, pos, rot) => {
-    const m = new Mesh(geo, mat)
-    m.position.set(...pos)
-    if (rot) m.rotation.set(...rot)
-    arm.add(m)
-    return m
-  }
-  add(handGeo.palm, gloveMat, [0, 0, -0.012])
-  add(handGeo.fingers, gloveMat, [0, -0.012, -0.044], [0.55, 0, 0])
-  add(handGeo.knuckles, knuckleMat, [0, 0.013, -0.032], [0.15, 0, 0])
-  add(handGeo.thumb, gloveMat, [-side * 0.027, 0.004, -0.03], [0.25, side * 0.35, 0])
-  add(handGeo.cuff, gloveMat, [0, 0, 0.018])
-  const sleeve = add(handGeo.sleeve, sleeveMat, [0, 0, 0.032])
-  add(handGeo.sleeveCuff, cuffMat, [0, 0, 0.045])
-  arm.userData.sleeve = sleeve
-  return arm
-}
-
-const _a = new Vector3()
 const _b = new Vector3()
+const _c = new Vector3()
+const _d = new Vector3()
+const _e = new Vector3()
+/** Where the off hand goes for shotgun shells (camera space, below the view). */
+const SHELL_BELT = new Vector3(-0.12, -0.25, -0.2)
 
-function placeArm(arm, wrist, elbow) {
-  arm.position.copy(wrist)
-  const sleeve = arm.userData.sleeve
-  _b.copy(elbow).sub(wrist)
-  const len = _b.length()
-  sleeve.scale.set(1, 1, Math.max(0.05, len - 0.032))
-  // Object3D.lookAt points +Z at the target; target is in parent (camera) space.
-  arm.lookAt(_a.copy(elbow))
+/** Pump travel 0..1 for a stroke that's back from `b0`..`b1`, held, then forward `f0`..`f1`. */
+function pumpStroke(k, b0, b1, f0, f1) {
+  if (k < b0 || k > f1) return 0
+  if (k < b1) return smooth((k - b0) / (b1 - b0))
+  if (k < f0) return 1
+  return 1 - smooth((k - f0) / (f1 - f0))
 }
 
 const smooth = (t) => t * t * (3 - 2 * t)
@@ -268,9 +190,10 @@ function ejectShell(vm, eject, kind) {
   eject.getWorldPosition(_shellPos)
   vm.camera.worldToLocal(_shellPos)
   s.mesh.geometry = vm.shellGeos[kind]
+  s.mesh.material = kind === 'shotgun' ? weaponMaterials.red : weaponMaterials.brass
   s.mesh.position.copy(_shellPos)
   s.mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0)
-  const up = kind === 'pistol' ? 1.35 : 1
+  const up = kind === 'pistol' ? 1.35 : kind === 'shotgun' ? 0.8 : 1
   s.vel.set(0.85 + Math.random() * 0.5, (0.9 + Math.random() * 0.5) * up, 0.18 + Math.random() * 0.25)
   s.spin.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 20)
   s.life = 0.75
@@ -343,6 +266,7 @@ export function ViewModel() {
       rifle: new CylinderGeometry(0.0029, 0.0029, 0.027, 10).rotateX(Math.PI / 2),
       pistol: new CylinderGeometry(0.0027, 0.0027, 0.0125, 10).rotateX(Math.PI / 2),
       sniper: new CylinderGeometry(0.0039, 0.0036, 0.042, 10).rotateX(Math.PI / 2),
+      shotgun: new CylinderGeometry(0.0095, 0.0095, 0.05, 12).rotateX(Math.PI / 2),
     }
     const shells = Array.from({ length: 14 }, () => {
       const mesh = new Mesh(shellGeos.rifle, weaponMaterials.brass)
@@ -359,6 +283,15 @@ export function ViewModel() {
     const armR = makeArm(1)
     const armL = makeArm(-1)
     camera.add(armR, armL)
+    // A shotgun shell pinched in the off hand's fingers while reloading.
+    const handShell = new Group()
+    handShell.add(new Mesh(new CylinderGeometry(0.0095, 0.0095, 0.05, 12).rotateX(Math.PI / 2), weaponMaterials.red))
+    const shellBase = new Mesh(new CylinderGeometry(0.0098, 0.0098, 0.012, 12).rotateX(Math.PI / 2), weaponMaterials.brass)
+    shellBase.position.z = 0.028
+    handShell.add(shellBase)
+    handShell.position.set(0, 0.004, -0.07)
+    handShell.visible = false
+    armL.add(handShell)
     const grenades = { frag: createWeaponModel('frag'), flash: createWeaponModel('flash'), smoke: createWeaponModel('smoke') }
     for (const g of Object.values(grenades)) {
       g.visible = false
@@ -384,6 +317,7 @@ export function ViewModel() {
       armR,
       armL,
       grenades,
+      handShell,
       flash,
       flashLight,
       sprint: 0,
@@ -401,6 +335,7 @@ export function ViewModel() {
       nextShell: 0,
       shotCount: 0,
       lastBolt: -1,
+      lastRack: -1,
       drum: 0,
       drumTarget: 0,
       lastSince: 1,
@@ -501,7 +436,53 @@ export function ViewModel() {
     }
     /** 0..1 how far the off hand is reaching for / holding the magazine. */
     let magHand = 0
-    if (a.reload >= 0) {
+    /** Shotgun: shell-by-shell reload progress (see weaponSystem.shellPhase), or null. */
+    let shellHand = null
+    /** Launcher: 0..1 how far the off hand is on the fresh rocket. */
+    let rocketHand = 0
+    const warhead = model.getObjectByName('warhead')
+    if (warhead) {
+      if (!warhead.userData.rest) warhead.userData.rest = warhead.position.clone()
+      warhead.position.copy(warhead.userData.rest)
+      warhead.visible = a.loaded !== false
+    }
+    if (a.reload >= 0 && id === 'shotgun') {
+      // Rolled onto its side so the loading port faces the off hand, which
+      // fetches shells off the belt one at a time and thumbs them in.
+      const rl = Math.min(1, a.reload)
+      const lift = Math.min(1, Math.sin(rl * Math.PI) * 4)
+      p.y += 0.05 * lift
+      p.x -= 0.045 * lift
+      rz -= 0.55 * lift
+      rxx += 0.14 * lift
+      if (a.shell != null) {
+        shellHand = a.shell
+        // Each shell pushed home nudges the gun.
+        const k = a.shell - Math.floor(a.shell)
+        if (a.shell >= 0 && k > 0.42 && k < 0.6) rxx -= 0.04 * Math.sin(((k - 0.42) / 0.18) * Math.PI)
+      }
+    } else if (a.reload >= 0 && id === 'rpg') {
+      // The tube swings across with its muzzle up and to the left, so the
+      // fresh rocket goes into the front within easy reach.
+      const rl = Math.min(1, a.reload)
+      const lift = Math.min(1, Math.sin(rl * Math.PI) * 1.8)
+      p.y -= 0.03 * lift
+      p.x -= 0.02 * lift
+      p.z += 0.05 * lift
+      ry += 0.95 * lift
+      rxx += 0.3 * lift
+      rz -= 0.15 * lift
+      if (warhead && rl > 0.2 && rl < 0.72) {
+        const f = Math.min(1, (rl - 0.2) / 0.42)
+        const e = f * f * (3 - 2 * f)
+        warhead.visible = true
+        warhead.position.z -= 0.3 * (1 - e)
+        warhead.position.y -= 0.05 * (1 - e)
+        rocketHand = Math.min(1, (rl - 0.2) / 0.06, (0.72 - rl) / 0.08)
+        // Seated: a shove that rocks the tube back.
+        if (rl > 0.62) p.z += 0.02 * Math.sin(((rl - 0.62) / 0.1) * Math.PI)
+      }
+    } else if (a.reload >= 0) {
       const rl = Math.min(1, a.reload)
       // Bring the gun up toward the middle and roll it so the magwell faces the
       // off hand: the whole swap happens in view.
@@ -612,19 +593,36 @@ export function ViewModel() {
       const swing = a.reload >= 0 ? Math.sin(Math.min(1, a.reload) * Math.PI) : 0
       bolt.position.x = bolt.userData.rest.x - 0.035 * Math.min(1, swing * 1.6)
     }
+
+    // Shotgun pump: racked between shots (and after loading from empty); the
+    // off hand rides along on it.
+    const pump = model.getObjectByName('pump')
+    if (pump) {
+      if (pump.userData.restZ === undefined) pump.userData.restZ = pump.position.z
+      let stroke = 0
+      if (a.bolt >= 0) stroke = pumpStroke(a.bolt, 0.25, 0.36, 0.42, 0.53)
+      else if (a.rack >= 0) stroke = pumpStroke(a.rack, 0, 0.4, 0.5, 0.92)
+      pump.position.z = pump.userData.restZ + 0.085 * stroke
+      p.z += 0.012 * stroke
+      rz += 0.05 * stroke
+      rxx += 0.025 * stroke
+    }
     vm.lastSince = a.sinceShot ?? 1
 
     vm.rig.position.copy(p)
     vm.rig.rotation.set(rxx, ry, rz)
     vm.rig.updateMatrixWorld(true)
 
-    // Brass: out of the port on each shot (on the bolt's backstroke for the sniper).
+    // Brass: out of the port on each shot; bolt guns and the pump throw theirs
+    // on the backstroke, and the launcher has nothing to throw.
     const eject = model.getObjectByName('eject')
-    const boltEject = id === 'sniper' && vm.lastBolt < 0.42 && a.bolt >= 0.42
-    if (eject && ((newShot && id !== 'sniper') || boltEject)) {
-      ejectShell(vm, eject, id === 'sniper' ? 'sniper' : id === 'ar' ? 'rifle' : 'pistol')
-    }
+    const shellKind = SHELL_KIND[id]
+    const cycleAt = id === 'sniper' ? 0.42 : id === 'shotgun' ? 0.33 : -1
+    const cycled = cycleAt > 0 && vm.lastBolt < cycleAt && a.bolt >= cycleAt
+    const rackEject = id === 'shotgun' && vm.lastRack < 0.4 && a.rack >= 0.4
+    if (eject && shellKind && ((newShot && cycleAt < 0) || cycled || rackEject)) ejectShell(vm, eject, shellKind)
     vm.lastBolt = a.bolt ?? -1
+    vm.lastRack = a.rack ?? -1
     updateShells(vm, dt)
     updateTrail(vm, model, id === 'knife' && a.melee >= 0.16 && a.melee < 0.46)
 
@@ -648,8 +646,9 @@ export function ViewModel() {
     } else if (id === 'knife') {
       vm.armL.visible = false
     } else {
+      // World position: the shotgun's support marker rides on the pump.
       const support = model.getObjectByName('leftHand')
-      const wristL = support ? toCam(support.position, new Vector3()) : new Vector3(-0.07, -0.13, -0.32)
+      const wristL = support ? vm.camera.worldToLocal(support.getWorldPosition(new Vector3())) : new Vector3(-0.07, -0.13, -0.32)
       if (magHand > 0 && mag) {
         // Hand on the magazine (just below its middle) while it's out of the gun.
         mag.getWorldPosition(_b)
@@ -657,9 +656,36 @@ export function ViewModel() {
         _b.y -= 0.03
         wristL.lerp(_b, magHand)
       }
-      placeArm(vm.armL, wristL, ELBOW_L)
+      if (shellHand !== null) {
+        // Off the pump to the belt, then for each shell: up to the loading port,
+        // thumb it in, back down for the next (back to the pump after the last).
+        const port = toCam(_c.set(0, -0.02, -0.06), _d)
+        port.y -= 0.03
+        port.z += 0.035
+        const onPump = _e.copy(wristL)
+        if (shellHand < 0) {
+          wristL.lerpVectors(onPump, SHELL_BELT, smooth(Math.max(0, 1 + shellHand / a.shellLead)))
+          vm.handShell.visible = shellHand > -0.2
+        } else {
+          const i = Math.floor(shellHand)
+          const k = shellHand - i
+          const back = i >= (a.shells ?? 1) - 1 ? onPump : SHELL_BELT
+          if (k < 0.4) wristL.lerpVectors(SHELL_BELT, port, smooth(k / 0.4))
+          else if (k < 0.62) wristL.copy(port).y += 0.018 * Math.sin(((k - 0.4) / 0.22) * Math.PI)
+          else wristL.lerpVectors(port, back, smooth((k - 0.62) / 0.38))
+          vm.handShell.visible = k < 0.5
+        }
+      }
+      if (rocketHand > 0 && warhead) {
+        warhead.localToWorld(_b.set(0, -0.06, -0.6))
+        vm.camera.worldToLocal(_b)
+        wristL.lerp(_b, rocketHand)
+      }
+      // Reaching out for the rocket brings the elbow forward with it.
+      placeArm(vm.armL, wristL, rocketHand > 0 ? _e.copy(ELBOW_L).lerp(ELBOW_L_REACH, rocketHand) : ELBOW_L)
       vm.armL.visible = true
     }
+    if (shellHand === null) vm.handShell.visible = false
 
     // Muzzle flash.
     const muzzle = model.getObjectByName('muzzle')

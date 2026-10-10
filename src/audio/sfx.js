@@ -370,6 +370,14 @@ const SOUNDS = {
     tone(out, { dur: 0.05, type: 'square', from: 1500, peak: 0.12 })
     tone(out, { start: 0.06, dur: 0.09, type: 'square', from: 2300, peak: 0.12 })
   },
+  /** Promotion: a short rising bugle-ish triad over a low swell. */
+  rankUp(out) {
+    tone(out, { dur: 0.9, type: 'triangle', from: 110, peak: 0.16, attack: 0.08 })
+    for (const [i, f] of [392, 523, 659, 784].entries()) {
+      tone(out, { start: i * 0.11, dur: i === 3 ? 0.7 : 0.16, type: 'sawtooth', from: f, peak: 0.05 })
+      tone(out, { start: i * 0.11, dur: i === 3 ? 0.8 : 0.18, type: 'triangle', from: f, peak: 0.12 })
+    }
+  },
   hurt(out) {
     tone(out, { dur: 0.16, from: 120, to: 60, peak: 0.6 })
     noise(out, { dur: 0.12, type: 'lowpass', freq: 600, peak: 0.4 })
@@ -463,7 +471,7 @@ const SEQUENCES = {
 
 /** How much of each kind of sound goes to the reverb. */
 function reverbFor(name) {
-  if (/^(ar|sniper|pistol|viper|hornet)$/.test(name)) return 0.32
+  if (/^(ar|sniper|pistol|viper|hornet|smg|lmg|shotgun|rpg)$/.test(name)) return 0.32
   if (name === 'suppressed') return 0.12
   if (/explosion|flashbang|distant/.test(name)) return 0.45
   if (/footstep|breath|gasp|heartbeat/.test(name)) return 0.02
@@ -591,7 +599,7 @@ export const audioStatus = () => ({
   music: Boolean(musicBuffer),
   musicSeconds: musicBuffer ? +musicBuffer.duration.toFixed(1) : 0,
   levels: Object.fromEntries(
-    [['music', musicBuffer], ...['ar', 'sniper', 'stepSand', 'knifeSwing', 'magIn'].map((n) => [n, bank?.get(n)?.[0]])]
+    [['music', musicBuffer], ...['ar', 'smg', 'lmg', 'shotgun', 'rpg', 'sniper', 'stepSand'].map((n) => [n, bank?.get(n)?.[0]])]
       .filter(([, b]) => b)
       .map(([n, b]) => {
         const d = b.getChannelData(0)

@@ -5,7 +5,7 @@ import { sfx } from '../../audio/sfx.js'
 import { net } from '../../net/network.js'
 import { BULLET_GROUPS } from '../../shared/constants.js'
 import { chestPoint, hitboxFor, rayHitbox } from '../../shared/hitbox.js'
-import { attachmentsFor, DEFAULT_CLASS, effectiveWeapon, EQUIPMENT, WEAPONS } from '../../shared/weapons.js'
+import { attachmentsFor, DEFAULT_CLASS, effectiveWeapon, EQUIPMENT, PUMP_RACK_TIME, reloadDuration, shellsToLoad, WEAPONS } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { fx } from '../fx/fxApi.js'
 import { castMap } from '../physicsQueries.js'
@@ -20,7 +20,9 @@ const _dir = new Vector3()
 const SLOT_KEYS = ['primary', 'secondary', 'melee']
 
 /** How much each shot blooms the cone; automatics bloom gently, everything else hard. */
-const BLOOM = { ar: 0.0055, hornet: 0.007 }
+const BLOOM = { ar: 0.0055, hornet: 0.007, smg: 0.006, lmg: 0.005 }
+/** Which suppressed sound each gun uses. */
+const QUIET_KIND = { sniper: 'sniper', ar: 'rifle', lmg: 'rifle', smg: 'pistol', shotgun: 'rifle' }
 
 /** Enemies whose hitboxes the local player can hit, at their rendered positions. */
 function* enemyTargets() {
@@ -111,6 +113,13 @@ export class WeaponSystem {
 
   /* ---- actions ----------------------------------------------------------- */
 
+  /** Brings the weapon back up after the hands were busy (coming off a ladder). */
+  raise(now, dur = 0.4) {
+    this.switchStart = now
+    this.switchUntil = now + dur
+    sfx.play('weaponRaise', { volume: 0.5 })
+  }
+
   switchTo(id, now) {
     if (id === this.current || !WEAPONS[id]) return
     if (id !== this.cls.primary && id !== this.cls.secondary && id !== 'knife') return
@@ -127,12 +136,15 @@ export class WeaponSystem {
     const w = this.weapon
     const a = this.ammo[w.id]
     if (!a || this.reloading || a.mag >= w.magSize || a.reserve <= 0) return
-    const dur = a.mag === 0 ? w.reloadEmptyTime : w.reloadTime
+    const dur = reloadDuration(w, a.mag)
     this.reloadStart = now
     this.reloadUntil = now + dur
+    this.reloadEmpty = a.mag === 0
+    this.reloadShells = w.shellTime ? shellsToLoad(w, a.mag) : 0
     // Each gun's own reload foley, timed to the animation; empty reloads add
-    // the charging handle / slide / bolt.
-    this.reloadSounds = reloadFoley(w.id, a.mag === 0).map(([f, name]) => ({ at: now + dur * f, name }))
+    // the charging handle / slide / bolt; shotguns click in a shell at a time.
+    const shell = w.shellTime ? { start: w.shellStart, time: w.shellTime } : null
+    this.reloadSounds = reloadFoley(w.id, a.mag === 0, dur, shell).map(([f, name]) => ({ at: now + dur * f, name }))
     net.send('rl', {})
   }
 
@@ -166,8 +178,11 @@ export class WeaponSystem {
     a.mag -= 1
     this.lastShotAt = now
     this.nextFireAt = now + w.fireInterval
-    if (w.fireMode === 'bolt') this.boltUntil = now + w.fireInterval
+    if (w.fireMode === 'bolt' || (w.fireMode === 'pump' && a.mag > 0)) this.boltUntil = now + w.fireInterval
     this.kick = 1
+
+    if (w.projectile) return this.fireRocket(now, ctx, w)
+    if (w.pellets) return this.fireBlast(now, ctx, w)
 
     // Spread cone: hip vs ADS, plus movement and bloom.
     const scoped = w.scoped && this.ads > 0.95
@@ -207,16 +222,77 @@ export class WeaponSystem {
       if (dist < 25) sfx.play('impact', { pos: end, volume: 0.6, ref: 2 })
     }
     net.send('fire', { w: w.id, o, d, e: end, h: best?.id, z: best?.zone })
-    if (w.quiet) sfx.play('suppressed', { kind: w.id === 'sniper' ? 'sniper' : w.id === 'ar' ? 'rifle' : 'pistol' })
-    else sfx.play(w.id, { volume: 0.9 })
+    this.shotSound(w)
+    this.recoil(w, ctx)
+    return true
+  }
 
-    // Recoil kicks the view up and a little sideways; it recovers in update().
+  shotSound(w) {
+    if (w.quiet) sfx.play('suppressed', { kind: QUIET_KIND[w.id] ?? 'pistol' })
+    else sfx.play(w.id, { volume: 0.9 })
+  }
+
+  /** Recoil kicks the view up and a little sideways; it recovers in update(). */
+  recoil(w, ctx) {
     const k = (1 - this.ads * 0.35) * (ctx.prone ? 0.7 : ctx.crouch ? 0.88 : 1)
     runtime.view.recoilPitch += w.recoil.vertical * k * (0.85 + Math.random() * 0.3)
     runtime.view.recoilYaw += (Math.random() - 0.5) * 2 * w.recoil.horizontal * k
     this.bloom = Math.min(0.07, this.bloom + (BLOOM[w.id] ?? 0.012))
-    if (w.id === 'sniper') runtime.view.shake = Math.min(1, runtime.view.shake + 0.25)
+    if (w.id === 'sniper' || w.id === 'shotgun') runtime.view.shake = Math.min(1, runtime.view.shake + 0.25)
+    if (w.id === 'rpg') runtime.view.shake = Math.min(1, runtime.view.shake + 0.45)
     if (w.fireMode !== 'auto') this.semiArmed = false
+  }
+
+  /** Shotgun: every pellet is its own ray; the server sums the damage per target. */
+  fireBlast(now, ctx, w) {
+    const cam = ctx.camera
+    cam.getWorldDirection(_fwd)
+    _right.set(1, 0, 0).applyQuaternion(cam.quaternion)
+    _up.set(0, 1, 0).applyQuaternion(cam.quaternion)
+    const o = [cam.position.x, cam.position.y, cam.position.z]
+    let cone = w.pelletSpread + (w.pelletSpreadAds - w.pelletSpread) * this.ads
+    if (!ctx.grounded) cone *= 1.3
+    const pellets = []
+    let blooded = false
+    for (let i = 0; i < w.pellets; i++) {
+      // Even-ish ring pattern with some jitter, like a real pattern on a board.
+      const r = Math.tan(cone) * (i === 0 ? 0.15 : 0.45 + Math.random() * 0.55)
+      const th = (i / w.pellets) * Math.PI * 2 + Math.random() * 0.6
+      _dir.copy(_fwd).addScaledVector(_right, Math.cos(th) * r).addScaledVector(_up, Math.sin(th) * r).normalize()
+      const d = [_dir.x, _dir.y, _dir.z]
+      const mapHit = castMap(o, d, w.range, BULLET_GROUPS, true)
+      const maxT = mapHit ? mapHit.toi : w.range
+      let best = null
+      for (const t of enemyTargets()) {
+        const hit = rayHitbox(o, d, hitboxFor(t.pos.x, t.pos.y, t.pos.z, t.renderStance ?? 0, t.yaw))
+        if (hit && hit.t < maxT && (!best || hit.t < best.t)) best = { id: t.id, ...hit }
+      }
+      const dist = best ? best.t : maxT
+      const e = [o[0] + d[0] * dist, o[1] + d[1] * dist, o[2] + d[2] * dist]
+      fx.tracer(runtime.local.muzzle, e, w.id, true)
+      if (best) {
+        if (!blooded) fx.blood(e)
+        blooded = true
+      } else if (mapHit && i % 2 === 0) fx.impact(e, mapHit.normal)
+      pellets.push({ d, e, h: best?.id, z: best?.zone })
+    }
+    if (!blooded && pellets[0]) sfx.play('impact', { pos: pellets[0].e, volume: 0.5, ref: 2 })
+    net.send('fire', { w: w.id, o, d: [_fwd.x, _fwd.y, _fwd.z], e: pellets[0]?.e, pl: pellets })
+    this.shotSound(w)
+    this.recoil(w, ctx)
+    return true
+  }
+
+  /** Launcher: the server flies the rocket; we just send the aim. */
+  fireRocket(now, ctx, w) {
+    const cam = ctx.camera
+    cam.getWorldDirection(_fwd)
+    const o = [cam.position.x, cam.position.y, cam.position.z]
+    net.send('fire', { w: w.id, o, d: [_fwd.x, _fwd.y, _fwd.z] })
+    fx.muzzle(runtime.local.muzzle, 'rpg')
+    fx.puff?.(runtime.local.muzzle)
+    this.shotSound(w)
+    this.recoil(w, ctx)
     return true
   }
 
@@ -278,13 +354,14 @@ export class WeaponSystem {
     for (const s of this.reloadSounds) {
       if (!s.played && now >= s.at) {
         s.played = true
-        sfx.play(s.name, { volume: 0.8 })
+        sfx.play(s.name, { volume: 1 })
       }
     }
     if (this.reloading && now >= this.reloadUntil) this.finishReload()
-    if (this.boltUntil && now >= this.boltUntil - 0.75 && !this.boltSound) {
+    if (this.boltUntil && now >= this.boltUntil - (w.fireMode === 'pump' ? 0.62 : 0.75) && !this.boltSound) {
       this.boltSound = true
-      sfx.play('bolt', { volume: 0.7 })
+      if (w.fireMode === 'pump') sfx.playSequence([[0, 'pumpBack'], [0.13, 'pumpForward']], { volume: 0.75 })
+      else sfx.play('bolt', { volume: 0.7 })
     }
     if (now >= this.boltUntil) this.boltSound = false
 
@@ -400,6 +477,16 @@ export class WeaponSystem {
     return { switching, meleeing, busyThrow }
   }
 
+  /**
+   * Shell-by-shell reload progress in shells: negative during the run-up to
+   * the first one, then 0..n (whole part = shell index), or null.
+   */
+  shellPhase(w, now) {
+    if (!this.reloading || !w.shellTime) return null
+    const k = (now - this.reloadStart - w.shellStart) / w.shellTime
+    return k < this.reloadShells ? k : null
+  }
+
   /** Viewmodel animation inputs (0..1 progress values, or -1 when idle). */
   animState(now) {
     const w = this.weapon
@@ -414,7 +501,15 @@ export class WeaponSystem {
       throw: now - this.throwStart < 0.45 ? (now - this.throwStart) / 0.45 : -1,
       cooking: this.cooking,
       grenadeKind: this.cooking ? 'frag' : now - this.throwStart < 0.45 ? this.lastThrowKind ?? 'frag' : 'frag',
-      bolt: w.fireMode === 'bolt' && now < this.boltUntil ? 1 - (this.boltUntil - now) / w.fireInterval : -1,
+      bolt: (w.fireMode === 'bolt' || w.fireMode === 'pump') && now < this.boltUntil ? 1 - (this.boltUntil - now) / w.fireInterval : -1,
+      // Shotgun reload: 0..1 through the current shell's insert, or -1.
+      shell: this.shellPhase(w, now),
+      shells: this.reloadShells,
+      shellLead: w.shellTime ? w.shellStart / w.shellTime : 1,
+      // Racking the pump after an empty shotgun reload: 0..1, or -1.
+      rack: this.reloading && w.fireMode === 'pump' && this.reloadEmpty && this.reloadUntil - now < PUMP_RACK_TIME ? 1 - (this.reloadUntil - now) / PUMP_RACK_TIME : -1,
+      // Is there a rocket sitting in the launcher?
+      loaded: (this.ammo[w.id]?.mag ?? 0) > 0 || (this.reloading && (now - this.reloadStart) / (this.reloadUntil - this.reloadStart) > 0.62),
       sinceShot: now - this.lastShotAt,
       empty: (this.ammo[w.id]?.mag ?? 1) === 0,
       att: w.att,

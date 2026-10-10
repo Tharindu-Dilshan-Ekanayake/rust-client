@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-import { CLASS_NAME_MAX, CUSTOM_CLASS_COUNT, PRESET_CLASSES, sanitizeClass, SECONDARY_OPTIONS } from '../shared/weapons.js'
+import { rankInfo } from '../shared/progression.js'
+import { CLASS_NAME_MAX, CUSTOM_CLASS_COUNT, PRESET_CLASSES, sanitizeClass } from '../shared/weapons.js'
 
 /**
  * UI + session state.
@@ -15,6 +16,7 @@ const LS = {
   classes: 'dustline.classes',
   lastClass: 'dustline.lastClass',
   settings: 'dustline.settings',
+  xp: 'dustline.xp',
 }
 
 function read(key, fallback) {
@@ -50,12 +52,22 @@ function storedClass(id, clean, preset = false) {
   }
 }
 
+/** Fresh custom classes start as a spread of the arsenal. */
+const DEFAULT_KITS = [
+  ['ar', 'pistol'],
+  ['smg', 'hornet'],
+  ['shotgun', 'viper'],
+  ['sniper', 'pistol'],
+  ['lmg', 'rpg'],
+]
+
 function defaultCustom(i) {
+  const [primary, secondary] = DEFAULT_KITS[i % DEFAULT_KITS.length]
   const clean = sanitizeClass({
     name: `CLASS ${i + 1}`,
-    primary: i % 2 === 0 ? 'ar' : 'sniper',
+    primary,
     primaryAtt: { optic: 'reddot' },
-    secondary: SECONDARY_OPTIONS[i % SECONDARY_OPTIONS.length],
+    secondary,
     tactical: i % 2 === 0 ? 'flash' : 'smoke',
   })
   return storedClass(customId(i), clean)
@@ -87,6 +99,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   adaptive: true,
 })
 
+/** The player's rank number from their stored XP. */
+export const currentRank = () => rankInfo(useGameStore.getState().xp).number
+
 /** Wire format for a class: the choices + a name. The server re-validates it. */
 export const toWireClass = (c) =>
   c
@@ -101,6 +116,7 @@ export const toWireClass = (c) =>
     : null
 
 let noticeSeq = 0
+let xpSeq = 0
 let feedSeq = 0
 let damageSeq = 0
 
@@ -172,6 +188,15 @@ export const useGameStore = create((set, get) => ({
   matchEnd: null,
   scoreboardOpen: false,
 
+  /** Career XP (kept in this browser; the server awards it per event). */
+  xp: Math.max(0, Number(read(LS.xp, 0)) || 0),
+  /** XP earned in the current match, by reason, for the end-of-match summary. */
+  matchXp: { total: 0, by: {} },
+  /** Recent "+100 KILL" popups. */
+  xpFeed: [],
+  /** Rank-up banner: { id, rank } or null. */
+  promotion: null,
+
   /* ---- actions ---------------------------------------------------------- */
 
   setMenuScreen: (menuScreen) => set({ menuScreen }),
@@ -238,6 +263,30 @@ export const useGameStore = create((set, get) => ({
     set((s) => ({ damageMarks: [...s.damageMarks.slice(-4), { id, angle }] }))
     setTimeout(() => set((s) => ({ damageMarks: s.damageMarks.filter((d) => d.id !== id) })), 1200)
   },
+
+  /** Adds XP; returns the new rank number when it's a promotion, else 0. */
+  addXp: (amount, why = '') => {
+    const n = Math.max(0, Math.round(Number(amount) || 0))
+    if (!n) return 0
+    const s = get()
+    const before = rankInfo(s.xp).number
+    const xp = s.xp + n
+    write(LS.xp, xp)
+    const after = rankInfo(xp).number
+    const id = ++xpSeq
+    set({
+      xp,
+      matchXp: { total: s.matchXp.total + n, by: { ...s.matchXp.by, [why]: (s.matchXp.by[why] ?? 0) + n } },
+      xpFeed: [...s.xpFeed.slice(-4), { id, n, why }],
+    })
+    setTimeout(() => set((st) => ({ xpFeed: st.xpFeed.filter((x) => x.id !== id) })), 2200)
+    if (after <= before) return 0
+    set({ promotion: { id, rank: after } })
+    setTimeout(() => set((st) => (st.promotion?.id === id ? { promotion: null } : {})), 5500)
+    return after
+  },
+
+  resetMatchXp: () => set({ matchXp: { total: 0, by: {} }, xpFeed: [] }),
 
   setHud: (patch) => {
     const hud = get().hud

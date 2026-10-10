@@ -26,5 +26,14 @@ if (new URLSearchParams(window.location.search).has('debug')) {
       // Give LocalPlayer a moment to mount before it hears the spawn.
       setTimeout(() => emit('spawn', { p, yaw, seq: 1, classData: cls, ammo: null }), 150)
     },
+    /** Adds XP as if the server had awarded it (rank-ups, unlocks, banners). */
+    grantXp(n = 1000, why = 'kill') {
+      const promoted = useGameStore.getState().addXp(n, why)
+      if (promoted) {
+        net.room?.send('rank', { r: promoted })
+        sfx.play('rankUp', { volume: 0.9 })
+      }
+      return promoted
+    },
   }
 }

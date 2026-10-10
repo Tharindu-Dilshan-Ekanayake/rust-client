@@ -18,7 +18,7 @@ import {
   TEAM_SELECT_TIMEOUT,
 } from '../shared/constants.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
-import { getGame, toWireClass, useGameStore } from '../store/gameStore.js'
+import { currentRank, getGame, toWireClass, useGameStore } from '../store/gameStore.js'
 
 /**
  * Colyseus connection + everything that turns server traffic into game state.
@@ -122,6 +122,9 @@ class Network {
       killFeed: [],
       pendingClass: null,
       activeClass: null,
+      matchXp: { total: 0, by: {} },
+      xpFeed: [],
+      promotion: null,
     })
     try {
       this.client ??= new Client(SERVER_URL)
@@ -129,6 +132,7 @@ class Network {
         name: game.playerName || displayName(getBloxityState()),
         avatar: avatarPayload(),
         classData: cls,
+        rank: currentRank(),
       })
       this.attach(room)
       store.setState({ connection: { status: 'connected', error: '' }, myId: room.sessionId })
@@ -258,6 +262,13 @@ class Network {
       useGameStore.setState({ pendingClass: { name: m.name } })
     })
     on('shot', (m) => this.onShot(m))
+    on('xp', (m) => {
+      const promoted = getGame().addXp(m.n, m.why)
+      if (promoted) {
+        room.send('rank', { r: promoted })
+        sfx.play('rankUp', { volume: 0.9 })
+      }
+    })
     on('hit', (m) => {
       useGameStore.setState({ hitmarker: { t: performance.now(), kill: m.kill, hs: m.hs } })
       sfx.play(m.kill ? 'killConfirm' : m.hs ? 'headshot' : 'hitmarker')
@@ -284,8 +295,11 @@ class Network {
         r.reloadAt = performance.now()
         r.reloadDur = Math.min(4000, Math.max(500, Number(m.d) || 2000))
         // You can hear an enemy reloading nearby — a real tell.
-        const foley = reloadFoley(m.w ?? r.weapon, Boolean(m.e)).map(([f, name]) => [(f * r.reloadDur) / 1000, name])
-        sfx.playSequence(foley, { pos: at, volume: 0.55, ref: 2, maxDistance: 26 })
+        const wid = m.w ?? r.weapon
+        const w = WEAPONS[wid]
+        const shell = w?.shellTime ? { start: w.shellStart, time: w.shellTime } : null
+        const foley = reloadFoley(wid, Boolean(m.e), r.reloadDur / 1000, shell).map(([f, name]) => [(f * r.reloadDur) / 1000, name])
+        sfx.playSequence(foley, { pos: at, volume: 0.7, ref: 2, maxDistance: 26 })
       } else if (m.a === 'throw') {
         r.throwAt = performance.now()
       }
@@ -298,6 +312,7 @@ class Network {
       this.snapshotUi(room.state, true)
     })
     on('match_start', () => {
+      getGame().resetMatchXp()
       getGame().pushNotice('MATCH STARTED — GOOD LUCK', 3000)
       sfx.play('killConfirm', { volume: 0.7 })
     })
@@ -429,6 +444,7 @@ class Network {
         ping: p.ping,
         hp: p.hp,
         joinedAt: p.joinedAt,
+        rank: p.rank ?? 1,
       })
     })
     useGameStore.setState({
@@ -491,14 +507,23 @@ class Network {
       // Suppressed shots never ping the minimap.
       if (!m.q) r.loudAt = now
     }
-    fx.tracer(m.o, m.e, m.w)
+    if (m.w === 'rpg') {
+      // The rocket itself flies as server state (WorldState draws it).
+      fx.muzzle(m.o, m.w)
+      fx.puff(m.o)
+      sfx.play('rpg', { pos: m.o, ref: 10, maxDistance: 220, volume: 0.9 })
+      return
+    }
+    // Shotgun blasts carry every pellet's end point.
+    const ends = Array.isArray(m.es) && m.es.length ? m.es : [m.e]
+    for (const e of ends) fx.tracer(m.o, e, m.w)
     if (!m.q) fx.muzzle(m.o, m.w)
     if (m.b) fx.blood(m.e)
-    else fx.impact(m.e, null)
+    for (const e of ends) if (!m.b || e !== m.e) fx.impact(e, null)
     if (m.q) {
-      sfx.play('suppressed', { pos: m.o, ref: 2, maxDistance: 40, kind: m.w === 'sniper' ? 'sniper' : m.w === 'ar' ? 'rifle' : 'pistol' })
+      sfx.play('suppressed', { pos: m.o, ref: 2, maxDistance: 40, kind: m.w === 'sniper' ? 'sniper' : m.w === 'ar' || m.w === 'lmg' || m.w === 'shotgun' ? 'rifle' : 'pistol' })
     } else {
-      const big = m.w === 'sniper' || m.w === 'viper'
+      const big = m.w === 'sniper' || m.w === 'viper' || m.w === 'shotgun' || m.w === 'lmg'
       sfx.play(m.w, { pos: m.o, ref: big ? 10 : 5, maxDistance: big ? 220 : 160, volume: 0.9 })
     }
   }
@@ -543,7 +568,7 @@ class Network {
 
   onExplosion(m) {
     const p = m.p
-    if (m.k === 'frag') {
+    if (m.k === 'frag' || m.k === 'rocket') {
       fx.explosion(p)
       sfx.play('explosion', { pos: p, ref: 9, maxDistance: 160 })
       const l = runtime.local

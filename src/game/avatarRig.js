@@ -345,7 +345,7 @@ const twist = (rig, name, angle) => rotateBone(rig, name, 'axisY', angle)
  *
  * @param {object} rig from `collectRig`
  * @param {{ time: number, speed: number, grounded: boolean, maxSpeed: number,
- *           aim?: boolean, pitch?: number, crouch?: boolean, climbing?: boolean,
+ *           aim?: boolean, pitch?: number, crouch?: boolean, climbing?: boolean, climbPhase?: number,
  *           melee?: number, prone?: number, slide?: number, blade?: number,
  *           ik?: object|null }} motion
  *   `speed` is horizontal speed in world units/sec; `maxSpeed` is what counts as a
@@ -354,6 +354,7 @@ const twist = (rig, name, angle) => rotateBone(rig, name, 'axisY', angle)
  *   `prone` / `slide` are 0..1 blends; `blade` turns the torso (radians) for a
  *   shooter's stance while the head keeps looking ahead.
  *   With `ik`, the arms are left alone here and solved onto the weapon afterwards.
+ *   `climbPhase` is the climber's height in rungs, so the limbs move with the climb.
  */
 export function animateRig(rig, motion) {
   if (!rig?.skeleton || !motion) return
@@ -367,6 +368,7 @@ export function animateRig(rig, motion) {
     pitch = 0,
     crouch = false,
     climbing = false,
+    climbPhase = time * 2.2,
     melee = 0,
     prone = 0,
     slide = 0,
@@ -385,14 +387,20 @@ export function animateRig(rig, motion) {
   }
 
   if (climbing) {
-    // Hand over hand up the ladder.
-    const c = Math.sin(time * 7)
-    swing(rig, 'ArmL1', -2.5 + c * 0.35)
-    swing(rig, 'ArmR1', -2.5 - c * 0.35)
-    swing(rig, 'LegL1', -0.6 + c * 0.4)
-    swing(rig, 'LegR1', -0.6 - c * 0.4)
-    swing(rig, 'LegL2', 0.9)
-    swing(rig, 'LegR2', 0.9)
+    // Hand over hand, one cycle per two rungs: one arm reaches high for the next
+    // rung while the other, bent, pulls; the opposite knee steps up a rung.
+    const c = Math.sin(climbPhase * Math.PI)
+    swing(rig, 'ArmL1', -2.6 + c * 0.45)
+    swing(rig, 'ArmR1', -2.6 - c * 0.45)
+    swing(rig, 'ArmL2', -0.25 - Math.max(0, c) * 0.6)
+    swing(rig, 'ArmR2', -0.25 - Math.max(0, -c) * 0.6)
+    swing(rig, 'LegL1', -0.45 - Math.max(0, c) * 0.65)
+    swing(rig, 'LegR1', -0.45 - Math.max(0, -c) * 0.65)
+    swing(rig, 'LegL2', 0.55 + Math.max(0, c) * 0.85)
+    swing(rig, 'LegR2', 0.55 + Math.max(0, -c) * 0.85)
+    // Chest in to the ladder, head tipped back to look up it.
+    swing(rig, 'Spine1', 0.06)
+    swing(rig, 'Neck1', -0.25)
     return
   }
 

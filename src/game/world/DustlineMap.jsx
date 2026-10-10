@@ -23,13 +23,14 @@ import { Apc, CamoNet, Culvert, Decor, Lamp, Pole, PowerLines, Rock } from './de
 import { DeckTank, Ground } from './ground.jsx'
 import { Ruin } from './ruins.jsx'
 import StaticBatcher from './StaticBatcher.jsx'
-import { Catwalk, Container, Landing, Perimeter, Pipeline, Shack, Stairs, Tank, Tower } from './structures.jsx'
+import { Catwalk, Container, Ladder, Landing, Perimeter, Pipeline, Shack, Stairs, Tank, Tower } from './structures.jsx'
 
 const RENDERERS = {
   tower: Tower,
   tank: Tank,
   catwalk: Catwalk,
   stairs: Stairs,
+  ladder: Ladder,
   landing: Landing,
   pipeline: Pipeline,
   ruin: Ruin,

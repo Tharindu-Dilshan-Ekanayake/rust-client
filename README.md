@@ -8,11 +8,30 @@ tall concrete T-walls with rusty mesh and razor wire, an elevated pipeline you
 can walk under, container stacks with graffiti and deck tanks, war-damaged ruins,
 and a rail spur, storage tanks and hills out past the wall.
 
-Classes pick a primary (VX-7 AR / Longhaul .50), a secondary (Kestrel P9,
-Viper .45 revolver or Hornet machine pistol) and a tactical, and each gun takes
-attachments: optics (red dot, holo), muzzle (suppressor, compensator) and
-extended mags. Aiming lines up whatever optic is fitted with the centre of the
-screen; suppressed shots are quiet and never show on enemy minimaps.
+Classes pick a primary (VX-7 AR, VK-9 Vandal SMG, Breacher 12 pump shotgun,
+Longhaul .50 sniper, Bulldog LMG), a secondary (Kestrel P9, Viper .45 revolver,
+Hornet machine pistol or the Warhead RL rocket launcher) and a tactical, and each
+gun takes attachments: optics (red dot, holo), muzzle (suppressor, compensator)
+and extended mags. Aiming lines up whatever optic is fitted with the centre of
+the screen; suppressed shots are quiet and never show on enemy minimaps.
+
+## Ranks
+
+Every gun is open to everyone from the start. Kills, headshots, knife kills,
+long shots, revenge, time played and finishing / winning matches earn XP
+(`+100 KILL` pops up by the crosshair, with a rank strip along the bottom of
+the HUD). XP climbs the army ranks, Private → Sergeant → … → Captain → General
+(16 in all), with a promotion banner and insignia on the menu, scoreboards and
+end screen. XP lives in this browser (`localStorage`), see
+`shared/progression.js`.
+
+## Ladders
+
+The derrick tower and both container stacks with deck tanks have ladders. Walk
+into one looking at it and hold W to climb; at the top you step off onto the
+deck. To get down, walk off the top onto the ladder (W goes down while you face
+away from it, S while you face it), or press Space to jump off. Your hands work
+hand over hand up the rungs, and others see you face the ladder and climb it.
 
 ```bash
 npm install
@@ -102,4 +121,5 @@ lowers the render scale when the frame rate drops below ~45 FPS.
 - `/?preview=avatars` — every remote-player pose side by side (`&view=side`),
   `&probe` for raw rig-axis tests.
 - `/?debug` — exposes `window.__dl`; `__dl.sandbox([x, y, z], yaw, cls?)` spawns
-  you offline (no server) to test movement or a class's viewmodel.
+  you offline (no server) to test movement or a class's viewmodel;
+  `__dl.grantXp(n)` adds XP (rank-ups, promotion banner).

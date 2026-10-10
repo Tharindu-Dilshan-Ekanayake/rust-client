@@ -6,6 +6,7 @@ import { TEAM_LABELS, TEAMS } from '../shared/constants.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { toWireClass, useGameStore } from '../store/gameStore.js'
 import { Button, Icon, RoomKey, WarmupBar } from './common.jsx'
+import { MatchXpSummary } from './Progression.jsx'
 import { useAnimationFrame } from './uiUtils.js'
 import { ScoreTable } from './HUD.jsx'
 import { SettingsPanel } from './Menus.jsx'
@@ -142,6 +143,7 @@ export function MatchEnd() {
             <ScoreTable highlightMvp />
           </div>
         </div>
+        <MatchXpSummary />
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <Button className="primary" disabled={staying} onClick={() => setStaying(true)}>
             {staying ? `Next match in ${room.restartIn}s` : 'Play again'}

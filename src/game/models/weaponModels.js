@@ -760,6 +760,199 @@ function buildHornet(att) {
   return g
 }
 
+function buildSMG(att) {
+  const g = new Group()
+  // Compact receiver, polymer lower, slotted handguard, folding stock.
+  add(g, profileGeo('smgUpper', [[-0.12, 0.02], [0.21, 0.02], [0.21, 0.07], [-0.1, 0.07], [-0.12, 0.056]], 0.046), M.metalDark)
+  add(g, profileGeo('smgLower', [[-0.08, 0.022], [0.2, 0.022], [0.2, -0.004], [0.12, -0.008], [0.12, -0.03], [0.055, -0.03], [0.055, -0.006], [-0.06, -0.004]], 0.042), M.polymer)
+  add(g, profileGeo('smgHand', [[0.2, -0.004], [0.36, 0.004], [0.36, 0.066], [0.2, 0.066]], 0.05, 0.006), M.polymer)
+  grooves(g, 4, 0.23, 0.03, 0.03, [0.052, 0.012, 0.012])
+  box(g, [0.004, 0.018, 0.04], 0.07, 0.048, M.inset, 0.023) // ejection port
+  box(g, [0.012, 0.01, 0.022], -0.08, 0.06, M.metal, -0.026) // charging handle
+  for (const u of [-0.06, 0.15]) crossPin(g, 0.0035, 0.048, u, 0.035, M.steel)
+  rail(g, -0.1, 0.19, 0.07, 0.02)
+  tube(g, 0.0085, 0.36, 0.41, 0.04, M.metalDark, 14)
+  add(g, profileGeo('smgGrip', [[-0.03, -0.004], [0.02, -0.004], [-0.004, -0.112], [-0.054, -0.106]], 0.032, 0.006), M.polymer)
+  add(g, profileGeo('smgGuard', [[0.0, -0.006], [0.055, -0.006], [0.055, -0.012], [0.008, -0.04], [0.0, -0.04]], 0.006, 0.001), M.polymer)
+  box(g, [0.005, 0.02, 0.006], 0.026, -0.016, M.steel)
+  for (const x of [-0.016, 0.016]) box(g, [0.006, 0.006, 0.2], -0.22, 0.045, M.metalDark, x) // stock rails
+  box(g, [0.04, 0.1, 0.012], -0.33, 0.01, M.rubber)
+  const mag = new Group()
+  mag.name = 'mag'
+  const ext = att.mag === 'extended'
+  add(mag, profileGeo(ext ? 'smgMagX' : 'smgMag', ext ? [[0.06, -0.025], [0.115, -0.025], [0.15, -0.25], [0.095, -0.255]] : [[0.06, -0.025], [0.115, -0.025], [0.138, -0.17], [0.083, -0.175]], 0.028, 0.004), M.metalDark)
+  cartridge(mag, 0.1, -0.02, 0, 0.026, 0.0045)
+  g.add(mag)
+  const optic = addOptic(g, att.optic, 0.02, 0.079)
+  if (optic) {
+    marker(g, 'sight', optic.sightU, optic.sightV)
+  } else {
+    box(g, [0.024, 0.02, 0.01], -0.08, 0.087, M.metalDark)
+    box(g, [0.004, 0.02, 0.004], 0.17, 0.087, M.metalDark)
+    marker(g, 'sight', -0.11, 0.094)
+  }
+  const tip = addMuzzle(g, att.muzzle, 0.41, 0.04, 0.0085)
+  marker(g, 'muzzle', tip + 0.008, 0.04)
+  marker(g, 'leftHand', 0.27, -0.004)
+  marker(g, 'eject', 0.07, 0.05, 0.026)
+  return g
+}
+
+function buildShotgun(att) {
+  const g = new Group()
+  // Receiver with a loading port underneath, barrel over the magazine tube.
+  add(g, profileGeo('sgRecv', [[-0.12, -0.012], [0.17, -0.012], [0.17, 0.064], [-0.1, 0.064], [-0.12, 0.05]], 0.052), M.metalDark)
+  box(g, [0.03, 0.006, 0.07], 0.08, -0.013, M.inset) // loading port
+  box(g, [0.004, 0.02, 0.06], 0.07, 0.04, M.inset, 0.026) // ejection port
+  for (const u of [-0.06, 0.12]) crossPin(g, 0.004, 0.054, u, 0.01, M.steel)
+  tube(g, 0.0125, 0.17, 0.62, 0.046, M.metalDark, 18)
+  tube(g, 0.0118, 0.17, 0.54, 0.016, M.metalDark, 16)
+  tube(g, 0.0132, 0.53, 0.55, 0.016, M.metal, 16) // mag cap
+  box(g, [0.03, 0.05, 0.02], 0.5, 0.031, M.metal) // barrel clamp
+  tube(g, 0.0065, 0.618, 0.622, 0.046, M.inset, 12) // bore
+  // Side saddle: spare shells on the left of the receiver.
+  for (let i = 0; i < 4; i++) {
+    const u = -0.06 + i * 0.03
+    const geo = cached('shellHull', () => new CylinderGeometry(0.0095, 0.0095, 0.05, 12))
+    add(g, geo, M.red, [-0.034, 0.025, -u])
+    add(g, cached('shellBase', () => new CylinderGeometry(0.0098, 0.0098, 0.012, 12)), M.brass, [-0.034, -0.006, -u])
+  }
+  box(g, [0.006, 0.07, 0.13], -0.015, 0.025, M.polymer, -0.028)
+  // Pump (its own group so it can rack): ribbed forend round the mag tube.
+  const pump = new Group()
+  pump.name = 'pump'
+  g.add(pump)
+  add(pump, profileGeo('sgPump', [[0.26, -0.012], [0.44, -0.012], [0.44, 0.046], [0.26, 0.046]], 0.05, 0.008), M.polymer)
+  for (let i = 0; i < 6; i++) box(pump, [0.052, 0.006, 0.006], 0.28 + i * 0.026, -0.004, M.inset)
+  marker(pump, 'leftHand', 0.35, -0.012)
+  // Pistol-grip stock, guard, trigger.
+  add(g, profileGeo('sgStock', [[-0.12, 0.05], [-0.42, 0.06], [-0.42, -0.08], [-0.33, -0.06], [-0.16, -0.012], [-0.12, -0.012]], 0.046, 0.008), M.polymer)
+  box(g, [0.05, 0.15, 0.016], -0.425, -0.01, M.rubber)
+  add(g, profileGeo('sgGrip', [[-0.03, -0.012], [0.02, -0.012], [-0.006, -0.12], [-0.058, -0.112]], 0.034, 0.006), M.polymer)
+  add(g, profileGeo('sgGuard', [[0.0, -0.014], [0.065, -0.014], [0.065, -0.02], [0.006, -0.046], [0.0, -0.046]], 0.006, 0.001), M.metalDark)
+  box(g, [0.005, 0.022, 0.006], 0.03, -0.026, M.steel)
+  rail(g, -0.08, 0.15, 0.064, 0.02)
+  const optic = addOptic(g, att.optic, 0.02, 0.073)
+  if (optic) {
+    marker(g, 'sight', optic.sightU, optic.sightV)
+  } else {
+    // Ghost-ring rear and a red bead up front.
+    add(g, cached('ghostRing', () => new TorusGeometry(0.008, 0.0028, 8, 16)), M.metalDark, [0, 0.084, 0.06])
+    box(g, [0.022, 0.016, 0.01], -0.06, 0.072, M.metalDark)
+    add(g, cached('bead', () => new SphereGeometry(0.0034, 10, 8)), M.red, [0, 0.062, -0.6])
+    marker(g, 'sight', -0.1, 0.084)
+  }
+  const tip = addMuzzle(g, att.muzzle === 'suppressor' ? 'suppressor' : 'none-pistol', 0.622, 0.046, 0.0125)
+  marker(g, 'muzzle', tip + 0.01, 0.046)
+  marker(g, 'eject', 0.07, 0.04, 0.03)
+  return g
+}
+
+function buildLMG(att) {
+  const g = new Group()
+  // Heavy receiver with a hinged feed cover, perforated heat shield, carry handle.
+  add(g, profileGeo('lmgRecv', [[-0.14, -0.012], [0.23, -0.012], [0.23, 0.086], [-0.12, 0.086], [-0.14, 0.07]], 0.066), M.metalDark)
+  add(g, profileGeo('lmgCover', [[-0.09, 0.086], [0.18, 0.086], [0.17, 0.106], [-0.08, 0.106]], 0.07, 0.004), M.metal)
+  crossPin(g, 0.004, 0.072, -0.085, 0.09, M.steel)
+  box(g, [0.004, 0.024, 0.07], 0.06, 0.05, M.inset, 0.034) // ejection port
+  for (const u of [-0.08, 0.2]) crossPin(g, 0.0045, 0.068, u, 0.02, M.steel)
+  tube(g, 0.0215, 0.23, 0.48, 0.042, M.polymer, 20)
+  for (let i = 0; i < 6; i++) for (const a of [0.5, -0.5]) box(g, [0.004, 0.008, 0.022], 0.25 + i * 0.038, 0.042 + Math.sin(a) * 0.02, M.inset, Math.cos(a) * 0.02)
+  tube(g, 0.0135, 0.48, 0.76, 0.042, M.metalDark, 18)
+  tube(g, 0.008, 0.48, 0.62, 0.016, M.metalDark, 12) // gas tube
+  box(g, [0.02, 0.04, 0.03], 0.62, 0.028, M.metal) // gas block
+  // Carry handle arching over the barrel.
+  box(g, [0.012, 0.05, 0.012], 0.42, 0.075, M.metalDark)
+  box(g, [0.012, 0.05, 0.012], 0.52, 0.075, M.metalDark)
+  box(g, [0.016, 0.012, 0.13], 0.47, 0.104, M.polymer)
+  // Folded bipod.
+  box(g, [0.04, 0.016, 0.03], 0.66, 0.012, M.metalDark)
+  for (const x of [-0.014, 0.014]) box(g, [0.008, 0.008, 0.24], 0.54, 0.004, M.metalDark, x)
+  // Skeleton stock, grip, guard, trigger.
+  add(g, profileGeo('lmgStock', [[-0.14, 0.07], [-0.44, 0.07], [-0.44, -0.07], [-0.36, -0.06], [-0.18, -0.01], [-0.14, -0.01]], 0.05, 0.008), M.tan)
+  box(g, [0.04, 0.05, 0.12], -0.3, 0.02, M.inset) // cut-out
+  box(g, [0.054, 0.15, 0.018], -0.445, 0.0, M.rubber)
+  add(g, profileGeo('lmgGrip', [[-0.03, -0.012], [0.025, -0.012], [-0.002, -0.125], [-0.056, -0.118]], 0.036, 0.006), M.polymer)
+  add(g, profileGeo('lmgGuard', [[0.0, -0.014], [0.07, -0.014], [0.07, -0.02], [0.006, -0.048], [0.0, -0.048]], 0.007, 0.001), M.metalDark)
+  box(g, [0.006, 0.022, 0.006], 0.032, -0.028, M.steel)
+  // Box magazine on the left, with the belt feeding up into the receiver.
+  const mag = new Group()
+  mag.name = 'mag'
+  add(mag, profileGeo('lmgBox', [[0.02, -0.02], [0.14, -0.02], [0.14, -0.13], [0.02, -0.13]], 0.08, 0.006), M.olive)
+  box(mag, [0.084, 0.012, 0.12], 0.08, -0.13, M.polymer)
+  box(mag, [0.02, 0.03, 0.05], 0.08, -0.07, M.inset, -0.041) // handle cut
+  for (let i = 0; i < 5; i++) cartridge(mag, 0.09, -0.015 + i * 0.012, -0.034 + i * 0.002, 0.045, 0.0045)
+  g.add(mag)
+  rail(g, -0.06, 0.14, 0.106, 0.022)
+  const optic = addOptic(g, att.optic, 0.02, 0.115)
+  if (optic) {
+    marker(g, 'sight', optic.sightU, optic.sightV)
+  } else {
+    box(g, [0.03, 0.03, 0.012], -0.06, 0.13, M.metalDark)
+    add(g, cached('lmgAperture', () => new TorusGeometry(0.006, 0.0022, 8, 16)), M.metalDark, [0, 0.148, 0.06])
+    box(g, [0.004, 0.05, 0.004], 0.72, 0.076, M.metalDark)
+    marker(g, 'sight', -0.1, 0.148)
+  }
+  const tip = addMuzzle(g, att.muzzle, 0.76, 0.042, 0.0135)
+  marker(g, 'muzzle', tip + 0.01, 0.042)
+  marker(g, 'leftHand', 0.33, 0.015)
+  marker(g, 'eject', 0.06, 0.02, 0.036)
+  return g
+}
+
+/** Rocket warhead + motor, pointing down -Z (used on the launcher and in flight). */
+function rocketParts(group, u0) {
+  // Motor tube sits in the launcher; the bulbous warhead sticks out the front.
+  tube(group, 0.026, u0 - 0.1, u0 + 0.04, 0.0, M.metalDark, 16)
+  tube(group, 0.044, u0 + 0.04, u0 + 0.17, 0.0, M.olive, 20, 0.042)
+  tube(group, 0.042, u0 + 0.17, u0 + 0.33, 0.0, M.olive, 20, 0.006)
+  tube(group, 0.008, u0 + 0.33, u0 + 0.36, 0.0, M.metal, 10)
+  tube(group, 0.0445, u0 + 0.09, u0 + 0.1, 0.0, M.brass, 20)
+}
+
+function buildRPG() {
+  const g = new Group()
+  const v = 0.06
+  // Launch tube with a flared venturi at the back and a wooden heat guard.
+  tube(g, 0.036, -0.4, 0.48, v, M.olive, 20)
+  tube(g, 0.042, -0.52, -0.4, v, M.metalDark, 20, 0.062)
+  tube(g, 0.041, 0.46, 0.5, v, M.metalDark, 20)
+  tube(g, 0.043, -0.12, 0.16, v, M.wood, 20)
+  for (const u of [-0.12, 0.16]) tube(g, 0.0445, u - 0.006, u + 0.006, v, M.metalDark, 20)
+  // Rear grip with trigger, front grip, iron sights, optical sight on the left.
+  add(g, profileGeo('rpgGrip', [[-0.03, 0.03], [0.02, 0.03], [-0.004, -0.09], [-0.056, -0.084]], 0.034, 0.006), M.wood)
+  add(g, profileGeo('rpgGuard', [[0.0, 0.026], [0.06, 0.026], [0.06, 0.02], [0.006, -0.008], [0.0, -0.008]], 0.006, 0.001), M.metalDark)
+  box(g, [0.005, 0.022, 0.006], 0.026, 0.012, M.steel)
+  add(g, profileGeo('rpgFront', [[0.16, 0.03], [0.21, 0.03], [0.2, -0.09], [0.158, -0.086]], 0.032, 0.006), M.wood)
+  box(g, [0.006, 0.034, 0.006], 0.3, v + 0.052, M.metalDark)
+  // Rear sight: a notch between two ears, so the front post shows through it.
+  for (const x of [-0.009, 0.009]) box(g, [0.006, 0.03, 0.01], -0.08, v + 0.05, M.metalDark, x)
+  box(g, [0.014, 0.014, 0.01], -0.08, v + 0.037, M.metalDark)
+  box(g, [0.03, 0.05, 0.11], 0.0, v + 0.022, M.metalDark, -0.056)
+  tube(g, 0.012, 0.055, 0.065, v + 0.032, M.lensCap, 14, 0.012, -0.056)
+  // The loaded rocket: hidden once fired, back after a reload.
+  const warhead = new Group()
+  warhead.name = 'warhead'
+  warhead.position.y = v
+  rocketParts(warhead, 0.46)
+  g.add(warhead)
+  marker(g, 'sight', -0.14, v + 0.065)
+  marker(g, 'muzzle', 0.52, v)
+  marker(g, 'leftHand', 0.18, -0.06)
+  return g
+}
+
+function buildRocket() {
+  const g = new Group()
+  rocketParts(g, -0.1)
+  // Fins at the tail.
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2
+    box(g, [0.004, 0.05, 0.05], -0.17, Math.sin(a) * 0.03, M.metalDark, Math.cos(a) * 0.03, [0, 0, a])
+  }
+  return g
+}
+
 function buildKnife() {
   const g = new Group()
   // Big clip-point combat knife (~34 cm). Blade: black-coated, with a bright
@@ -814,6 +1007,11 @@ const BUILDERS = {
   pistol: buildPistol,
   viper: buildViper,
   hornet: buildHornet,
+  smg: buildSMG,
+  shotgun: buildShotgun,
+  lmg: buildLMG,
+  rpg: buildRPG,
+  rocket: buildRocket,
   knife: buildKnife,
   frag: buildFrag,
   flash: () => buildCanister(M.grey, M.white),
@@ -827,6 +1025,10 @@ const GRIPS = {
   pistol: [-0.023, -0.05],
   viper: [-0.05, -0.05],
   hornet: [-0.02, -0.048],
+  smg: [-0.016, -0.06],
+  shotgun: [-0.012, -0.07],
+  lmg: [-0.006, -0.085],
+  rpg: [-0.018, -0.05],
   knife: [-0.065, 0.002],
 }
 

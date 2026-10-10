@@ -5,6 +5,7 @@ import { AdditiveBlending, CanvasTexture, Object3D, SpriteMaterial, SRGBColorSpa
 import { sfx } from '../../audio/sfx.js'
 import { renderTime, sampleRemote } from '../../net/network.js'
 import { PLAYER } from '../../shared/constants.js'
+import { ladderAt } from '../../shared/map.js'
 import { parseKit } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { createWeaponModel } from '../models/weaponModels.js'
@@ -82,7 +83,8 @@ const HOLDS = {
   pistol: { pivot: [-0.12, 1.3, 0.0], hold: [0, 0.02, 0.42], blade: -0.26, low: [-0.3, 1.06, 0.29], lowRot: [1.0, 0, 0], lowHold: 0.1, oneHandLow: true, prone: [-0.05, 0.5, -0.04] },
   knife: { pivot: [-0.33, 1.05, 0.28], hold: [0, 0, 0], blade: 0, low: [-0.33, 1.05, 0.28], lowRot: [0.9, 0, 0], lowHold: 0, oneHandLow: true, prone: [-0.3, 0.25, 0.1] },
 }
-const holdFor = (id) => (id === 'ar' || id === 'sniper' ? HOLDS.rifle : id === 'knife' ? HOLDS.knife : HOLDS.pistol)
+const LONG_GUNS = new Set(['ar', 'sniper', 'smg', 'shotgun', 'lmg', 'rpg'])
+const holdFor = (id) => (LONG_GUNS.has(id) ? HOLDS.rifle : id === 'knife' ? HOLDS.knife : HOLDS.pistol)
 const lerp = (a, b, t) => a + (b - a) * t
 const ease = (t) => t * t * (3 - 2 * t)
 
@@ -152,6 +154,10 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
       r.vy = _sample.vy
     }
 
+    // On a ladder the body faces it, whichever way the climber is looking.
+    const onLadder = alive && r.climbing ? ladderAt(r.pos.x, r.pos.y, r.pos.z) : null
+    if (onLadder) g.rotation.y = Math.atan2(-onLadder.exitDir[0], -onLadder.exitDir[2]) + Math.PI
+
     // --- Stance blends --------------------------------------------------------------
     const s = smooth.current
     const k = Math.min(1, dt * 10)
@@ -198,6 +204,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     m.maxSpeed = PLAYER.walkSpeed * (r.sprint ? PLAYER.sprintMultiplier : 1)
     m.grounded = Math.abs(r.vy) < 1.8 || r.climbing || slideNow
     m.climbing = alive && r.climbing
+    m.climbPhase = onLadder ? r.pos.y / onLadder.rungs[1] : m.time * 2.2
     m.crouch = Boolean(r.crouch) && !proneNow
     m.prone = pr
     m.slide = sl
@@ -223,6 +230,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
       w.mag = model.getObjectByName('mag')
       w.sight = model.getObjectByName('sight')
       w.magRestY = w.mag?.position.y ?? 0
+      w.warhead = model.getObjectByName('warhead')
       // Third-person support hand: on the fore-end, but no further out than the
       // blocky arms can actually reach.
       const lh = model.getObjectByName('leftHand')
@@ -268,7 +276,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
       const sinceShot = now - (r.firedAt ?? -1e9)
       if (alive && sinceShot < 140 && weaponId !== 'knife') {
         const kick = 1 - sinceShot / 140
-        const heavy = weaponId === 'sniper' ? 2.2 : weaponId === 'viper' ? 1.8 : 1
+        const heavy = { sniper: 2.2, viper: 1.8, shotgun: 2, rpg: 2.4 }[weaponId] ?? 1
         hd.position.z -= 0.035 * kick * heavy
         pv.rotation.x -= 0.07 * kick * heavy
       }
@@ -279,6 +287,11 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
         pv.rotation.x += 0.35 * tip
       }
       if (w.mag) w.mag.position.y = w.magRestY
+      if (w.warhead) {
+        // The rocket's gone once fired, until a reload slides the next one in.
+        const loadedAt = (r.reloadAt ?? -1e9) + (r.reloadDur ?? 0) * 0.62
+        w.warhead.visible = !((r.firedAt ?? -1e9) > (loadedAt <= now ? loadedAt : -1e9))
+      }
       if (reloading && w.mag) {
         const out = reloadT < 0.25 ? reloadT / 0.25 : reloadT < 0.6 ? 1 : Math.max(0, 1 - (reloadT - 0.6) / 0.15)
         w.mag.position.y = w.magRestY - 0.25 * out
@@ -355,6 +368,15 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     if (nameplate.current) {
       nameplate.current.visible = alive && (friendly || runtime.aimTargetId === id)
       nameplate.current.position.y = 2.15 - drop
+    }
+
+    // Hands and boots on the rungs.
+    if (onLadder) {
+      const rung = Math.floor(r.pos.y / (onLadder.rungs[1] * 2))
+      if (rung !== s.climbRung && runtime.camera && runtime.camera.position.distanceTo(g.position) < 25) {
+        sfx.play('ladderRung', { pos: [g.position.x, g.position.y + 1.2, g.position.z], volume: 0.5, ref: 2.5 })
+      }
+      s.climbRung = rung
     }
 
     // Footsteps you can hear.

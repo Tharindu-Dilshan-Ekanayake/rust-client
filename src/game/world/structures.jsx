@@ -275,6 +275,33 @@ export function Catwalk({ p, length, width }) {
 }
 
 /** Steel stairs between two points; built in a local frame whose +Z runs uphill. */
+/**
+ * Fixed steel ladder up a wall face (see `ladder()` in shared/map.js): rails
+ * with rungs, stand-off brackets back to the wall, and goose-neck grab rails
+ * that curl over onto the deck so you can haul yourself off the top.
+ */
+export function Ladder({ foot, dir, topY, rungs: [first, step] }) {
+  const pieces = useMemo(() => {
+    const out = []
+    const side = [-dir[2], 0, dir[0]]
+    const at = (along, lateral, y) => [foot[0] + dir[0] * along + side[0] * lateral, y, foot[1] + dir[2] * along + side[2] * lateral]
+    // Boxes are built along x (lateral) and z (along dir), then turned to face the wall.
+    const quat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.atan2(dir[0], dir[2]))
+    const railH = topY + 1.0
+    for (const l of [-0.25, 0.25]) {
+      out.push({ geometry: boxGeo(0.06, railH, 0.06, 1), position: at(0, l, railH / 2), quaternion: quat })
+      // Goose neck: over the edge and down onto the deck.
+      out.push({ geometry: boxGeo(0.05, 0.05, 0.5, 1), position: at(0.22, l, railH), quaternion: quat })
+      out.push({ geometry: boxGeo(0.05, 1.0, 0.05, 1), position: at(0.47, l, topY + 0.5), quaternion: quat })
+      for (let y = 1.2; y < topY; y += 1.7) out.push({ geometry: boxGeo(0.04, 0.04, 0.14, 1), position: at(0.07, l, y), quaternion: quat })
+    }
+    for (let y = first; y <= topY + 0.01; y += step) out.push({ geometry: boxGeo(0.5, 0.035, 0.035, 1), position: at(0, 0, y), quaternion: quat })
+    return out
+  }, [foot, dir, topY, first, step])
+  const geometry = useMerged(pieces)
+  return <mesh geometry={geometry} material={materials.hazard()} castShadow receiveShadow />
+}
+
 export function Stairs({ bottom, top, width, steps = 22, rails = true, material }) {
   const dx = top[0] - bottom[0]
   const dz = top[2] - bottom[2]

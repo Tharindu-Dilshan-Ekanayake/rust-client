@@ -6,12 +6,14 @@ import { MAX_PLAYERS } from '../shared/constants.js'
 import { MAP_NAME } from '../shared/map.js'
 import { useGameStore } from '../store/gameStore.js'
 import { Button } from './common.jsx'
+import { RankCard } from './Progression.jsx'
 
 const TIPS = [
   ['Cook grenades', ' by holding G — release to throw. Hold too long and it goes off in your hand.'],
   ['Smoke blocks bot vision.', ' Pop one to cross the pipeline gap.'],
   ['Hold Shift', ' while scoped with the Longhaul to steady your breath.'],
   ['The tower ladder', ' is the only way up — and you can’t shoot while climbing.'],
+  ['The container stacks have ladders.', ' Walk off the top onto one to slide back down.'],
   ['Press V', ' to quick-melee with any weapon. Close the gap and it lunges.'],
   ['Change class with B', ' any time — it applies on your next spawn.'],
   ['Sprint and tap C', ' to slide into cover. Jump out of a slide to keep the speed.'],
@@ -138,6 +140,7 @@ export function MainMenu() {
   return (
     <div className="dl-screen dim">
       <AccountChip />
+      <RankCard />
       <div className="dl-menu dl-slide-in">
         <Logo small />
         <div>

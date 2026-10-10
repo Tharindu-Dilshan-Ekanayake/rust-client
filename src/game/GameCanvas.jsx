@@ -10,6 +10,7 @@ import { Effects } from './fx/Effects.jsx'
 import { AmmoPickups, GrenadeMeshes, SmokeClouds } from './fx/WorldState.jsx'
 import MenuCamera from './MenuCamera.jsx'
 import { installInput } from './player/input.js'
+import ClimbHands from './player/ClimbHands.jsx'
 import LocalPlayer from './player/LocalPlayer.jsx'
 import { RenderPipeline, ViewModel } from './player/ViewModel.jsx'
 import RemotePlayers from './remote/RemotePlayers.jsx'
@@ -150,6 +151,7 @@ export function GameCanvas() {
         <Physics>
           <DustlineMap />
           {inRoom && <LocalPlayer />}
+          {inRoom && <ClimbHands />}
         </Physics>
         {inRoom && (
           <>

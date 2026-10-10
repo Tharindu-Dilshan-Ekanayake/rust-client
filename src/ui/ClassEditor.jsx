@@ -15,8 +15,10 @@ import {
   TACTICAL_OPTIONS,
   WEAPONS,
 } from '../shared/weapons.js'
+import { rankInfo, RANKS } from '../shared/progression.js'
 import { useGameStore } from '../store/gameStore.js'
 import { Button, Icon } from './common.jsx'
+import { RankInsignia } from './RankInsignia.jsx'
 import { attachmentSummary } from './uiUtils.js'
 
 /* ---------------------------------------------------------------------------
@@ -139,6 +141,7 @@ export function ClassEditor({ onBack }) {
   const selectedId = useGameStore((s) => s.selectedClassId)
   const selectClass = useGameStore((s) => s.selectClass)
   const updateClass = useGameStore((s) => s.updateClass)
+  const rank = useGameStore((s) => rankInfo(s.xp).number)
   const cls = classes.find((c) => c.id === selectedId) ?? classes[0]
 
   // Which gun the weapon card + attachment pickers are editing.
@@ -190,6 +193,15 @@ export function ClassEditor({ onBack }) {
         <div>
           <div className="dl-label">Loadout</div>
           <h1 className="dl-h">Create-a-class</h1>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', marginRight: 16 }}>
+          <RankInsignia rank={rank} size={34} />
+          <div style={{ lineHeight: 1.1 }}>
+            <div className="dl-label">Rank {rank}</div>
+            <div className="dl-h" style={{ fontSize: 16 }}>
+              {RANKS[rank - 1].name}
+            </div>
+          </div>
         </div>
         <Button className="small" onClick={onBack}>
           Back
