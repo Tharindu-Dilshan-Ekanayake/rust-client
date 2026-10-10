@@ -1,0 +1,716 @@
+import { useFrame, useThree } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import {
+  AdditiveBlending,
+  AmbientLight,
+  BufferAttribute,
+  BufferGeometry,
+  CanvasTexture,
+  CylinderGeometry,
+  DirectionalLight,
+  DoubleSide,
+  Group,
+  HemisphereLight,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Object3D,
+  PerspectiveCamera,
+  RepeatWrapping,
+  PointLight,
+  Scene,
+  Sprite,
+  SpriteMaterial,
+  SRGBColorSpace,
+  Vector2,
+  Vector3,
+} from 'three'
+
+import { sfx } from '../../audio/sfx.js'
+import { ColorGrade } from '../ColorGrade.js'
+import { useGameStore } from '../../store/gameStore.js'
+import { createWeaponModel, weaponMaterials } from '../models/weaponModels.js'
+import { runtime } from '../runtime.js'
+import { SUN_DIR } from '../environment.js'
+import { flareTexture } from '../world/textures.js'
+
+/**
+ * First-person weapon + arms.
+ *
+ * Lives in its own scene with its own camera and is drawn after the world with a
+ * cleared depth buffer (see RenderPipeline), so the gun never clips into walls
+ * and keeps a steady FOV while the world camera zooms for ADS.
+ */
+
+/**
+ * Hip placement per weapon, in viewmodel camera space. ADS placement is worked
+ * out from each model's 'sight' marker so whatever optic is fitted lines up
+ * with the centre of the screen; `eye` is how far in front of the eye it sits.
+ */
+const POSES = {
+  ar: { hip: [0.13, -0.135, -0.3], rot: [0, 0.04, 0], eye: 0.075, opticEye: 0.06 },
+  sniper: { hip: [0.15, -0.15, -0.3], rot: [0, 0.05, 0], eye: 0.06 },
+  pistol: { hip: [0.11, -0.105, -0.25], rot: [0, 0.05, 0], eye: 0.15, opticEye: 0.12 },
+  viper: { hip: [0.115, -0.11, -0.26], rot: [0, 0.05, 0], eye: 0.15, opticEye: 0.12 },
+  hornet: { hip: [0.12, -0.115, -0.26], rot: [0, 0.05, 0], eye: 0.13, opticEye: 0.11 },
+  knife: { hip: [0.13, -0.12, -0.28], ads: [0.13, -0.12, -0.28], rot: [0.42, 0.9, 0.18] },
+}
+/** Viewmodel kick multiplier per weapon. */
+const HEAVY = { sniper: 2.4, viper: 2.1, pistol: 1.4, hornet: 0.75 }
+/** Muzzle-flash sprite size (rig units) per weapon. */
+const FLASH_SIZE = { sniper: 0.42, viper: 0.34, pistol: 0.22, hornet: 0.2 }
+/** Guns are modelled at real size; this keeps them from filling the screen. */
+const VM_SCALE = 0.6
+const GRIP = new Vector3(0, -0.06, 0.06)
+const ELBOW_R = new Vector3(0.22, -0.34, 0.06)
+const ELBOW_L = new Vector3(-0.18, -0.34, -0.02)
+
+/** Desert camo for the sleeves: tan base with olive and brown blotches. */
+function camoTexture() {
+  const c = document.createElement('canvas')
+  c.width = 128
+  c.height = 128
+  const ctx = c.getContext('2d')
+  ctx.fillStyle = '#a28d68'
+  ctx.fillRect(0, 0, 128, 128)
+  let seed = 7
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  for (const [color, count, size] of [['#6f6a46', 14, 26], ['#7d5f40', 10, 20], ['#c4b08a', 12, 14]]) {
+    ctx.fillStyle = color
+    for (let i = 0; i < count; i++) {
+      const x = rand() * 128
+      const y = rand() * 128
+      ctx.beginPath()
+      for (let k = 0; k < 7; k++) {
+        const a = (k / 7) * Math.PI * 2
+        const r = size * (0.45 + rand() * 0.55)
+        ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.7)
+      }
+      ctx.fill()
+    }
+  }
+  const t = new CanvasTexture(c)
+  t.colorSpace = SRGBColorSpace
+  t.wrapS = RepeatWrapping
+  t.wrapT = RepeatWrapping
+  t.repeat.set(1.5, 2)
+  return t
+}
+
+const gloveMat = new MeshStandardMaterial({
+  color: '#3d3a33',
+  roughness: 0.85,
+  normalMap: weaponMaterials.polymer.normalMap,
+  normalScale: new Vector2(0.5, 0.5),
+})
+const knuckleMat = new MeshStandardMaterial({ color: '#2a2925', roughness: 0.7 })
+const sleeveMat = new MeshStandardMaterial({ color: '#ffffff', map: camoTexture(), roughness: 0.95 })
+const cuffMat = new MeshStandardMaterial({ color: '#5e573f', roughness: 0.95 })
+
+const rounded = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 2, r)
+const handGeo = {
+  palm: rounded(0.05, 0.03, 0.05, 0.01),
+  fingers: rounded(0.048, 0.024, 0.036, 0.009),
+  knuckles: rounded(0.05, 0.008, 0.016, 0.003),
+  thumb: rounded(0.016, 0.018, 0.04, 0.007),
+  cuff: rounded(0.054, 0.04, 0.026, 0.008),
+  sleeve: (() => {
+    const g = rounded(0.062, 0.06, 1, 0.018)
+    // Pivot at the wrist; the sleeve extends toward the elbow along +Z.
+    g.translate(0, 0, 0.5)
+    return g
+  })(),
+  sleeveCuff: rounded(0.068, 0.066, 0.03, 0.014),
+}
+
+/**
+ * One forearm + gloved hand. The group sits at the wrist and is turned so +Z
+ * points at the elbow: fingers reach forward (-Z), curled down round the grip,
+ * with the thumb on the inside (`side` -1 left arm, 1 right arm).
+ */
+function makeArm(side) {
+  const arm = new Group()
+  const add = (geo, mat, pos, rot) => {
+    const m = new Mesh(geo, mat)
+    m.position.set(...pos)
+    if (rot) m.rotation.set(...rot)
+    arm.add(m)
+    return m
+  }
+  add(handGeo.palm, gloveMat, [0, 0, -0.012])
+  add(handGeo.fingers, gloveMat, [0, -0.012, -0.044], [0.55, 0, 0])
+  add(handGeo.knuckles, knuckleMat, [0, 0.013, -0.032], [0.15, 0, 0])
+  add(handGeo.thumb, gloveMat, [-side * 0.027, 0.004, -0.03], [0.25, side * 0.35, 0])
+  add(handGeo.cuff, gloveMat, [0, 0, 0.018])
+  const sleeve = add(handGeo.sleeve, sleeveMat, [0, 0, 0.032])
+  add(handGeo.sleeveCuff, cuffMat, [0, 0, 0.045])
+  arm.userData.sleeve = sleeve
+  return arm
+}
+
+const _a = new Vector3()
+const _b = new Vector3()
+
+function placeArm(arm, wrist, elbow) {
+  arm.position.copy(wrist)
+  const sleeve = arm.userData.sleeve
+  _b.copy(elbow).sub(wrist)
+  const len = _b.length()
+  sleeve.scale.set(1, 1, Math.max(0.05, len - 0.032))
+  // Object3D.lookAt points +Z at the target; target is in parent (camera) space.
+  arm.lookAt(_a.copy(elbow))
+}
+
+const smooth = (t) => t * t * (3 - 2 * t)
+const KNIFE_VIEW_SCALE = 1.3
+const TRAIL_POINTS = 14
+
+/**
+ * Knife slash, alternating forehand and backhand: a short wind-up to one side,
+ * a fast cut across and down with a little lunge, then a settle back.
+ * Returns pose offsets for progress `k` (0..1).
+ */
+function knifeSlash(k, dir) {
+  const o = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, strike: 0 }
+  const wind = { x: dir * 0.09, y: 0.05, z: 0.02, rx: -0.25, ry: -dir * 0.35, rz: dir * 0.75 }
+  const cut = { x: -dir * 0.24, y: -0.07, z: -0.13, rx: 0.35, ry: dir * 0.85, rz: -dir * 1.0 }
+  let from
+  let to
+  let t
+  if (k < 0.18) {
+    from = null
+    to = wind
+    t = smooth(k / 0.18)
+  } else if (k < 0.42) {
+    from = wind
+    to = cut
+    t = smooth((k - 0.18) / 0.24)
+    o.strike = Math.sin(((k - 0.18) / 0.24) * Math.PI)
+  } else {
+    from = cut
+    to = null
+    t = smooth((k - 0.42) / 0.58)
+  }
+  for (const key of ['x', 'y', 'z', 'rx', 'ry', 'rz']) {
+    const a = from ? from[key] : 0
+    const b = to ? to[key] : 0
+    o[key] = a + (b - a) * t
+  }
+  return o
+}
+
+/** A fading ribbon behind the blade while it cuts (camera space, additive). */
+function makeTrail() {
+  const geo = new BufferGeometry()
+  const pos = new Float32Array(TRAIL_POINTS * 2 * 3)
+  const col = new Float32Array(TRAIL_POINTS * 2 * 3)
+  geo.setAttribute('position', new BufferAttribute(pos, 3))
+  geo.setAttribute('color', new BufferAttribute(col, 3))
+  const idx = []
+  for (let i = 0; i < TRAIL_POINTS - 1; i++) {
+    const a = i * 2
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+  }
+  geo.setIndex(idx)
+  const mesh = new Mesh(
+    geo,
+    new MeshBasicMaterial({ vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }),
+  )
+  mesh.frustumCulled = false
+  mesh.visible = false
+  return { mesh, points: [] }
+}
+
+const _tip = new Vector3()
+const _mid = new Vector3()
+
+function updateTrail(vm, model, active) {
+  const trail = vm.trail
+  if (active) {
+    const tip = model.getObjectByName('tip')
+    const mid = model.getObjectByName('mid')
+    if (tip && mid) {
+      tip.getWorldPosition(_tip)
+      mid.getWorldPosition(_mid)
+      vm.camera.worldToLocal(_tip)
+      vm.camera.worldToLocal(_mid)
+      trail.points.unshift([_tip.clone(), _mid.clone()])
+    }
+  } else if (trail.points.length) {
+    // Let the ribbon shrink away instead of vanishing.
+    trail.points.pop()
+  }
+  if (trail.points.length > TRAIL_POINTS) trail.points.length = TRAIL_POINTS
+  const n = trail.points.length
+  trail.mesh.visible = n > 1
+  if (n < 2) return
+  const pos = trail.mesh.geometry.getAttribute('position')
+  const col = trail.mesh.geometry.getAttribute('color')
+  for (let i = 0; i < TRAIL_POINTS; i++) {
+    const [a, b] = trail.points[Math.min(i, n - 1)]
+    pos.setXYZ(i * 2, a.x, a.y, a.z)
+    pos.setXYZ(i * 2 + 1, b.x, b.y, b.z)
+    const fade = i < n ? (1 - i / n) ** 1.5 * 0.38 : 0
+    col.setXYZ(i * 2, fade, fade * 0.97, fade * 0.9)
+    col.setXYZ(i * 2 + 1, fade * 0.2, fade * 0.2, fade * 0.18)
+  }
+  pos.needsUpdate = true
+  col.needsUpdate = true
+  trail.mesh.geometry.setDrawRange(0, (n - 1) * 6)
+}
+
+const _shellPos = new Vector3()
+
+/** Throws a casing out of the gun's `eject` marker, in camera space. */
+function ejectShell(vm, eject, kind) {
+  const s = vm.shells[vm.nextShell++ % vm.shells.length]
+  eject.getWorldPosition(_shellPos)
+  vm.camera.worldToLocal(_shellPos)
+  s.mesh.geometry = vm.shellGeos[kind]
+  s.mesh.position.copy(_shellPos)
+  s.mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0)
+  const up = kind === 'pistol' ? 1.35 : 1
+  s.vel.set(0.85 + Math.random() * 0.5, (0.9 + Math.random() * 0.5) * up, 0.18 + Math.random() * 0.25)
+  s.spin.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 20)
+  s.life = 0.75
+  s.mesh.visible = true
+  // A tinkle as it lands, not for every round of a long burst.
+  if (vm.shotCount++ % 2 === 0) setTimeout(() => sfx.play('brass', { volume: 0.22 }), 380 + Math.random() * 120)
+}
+
+function updateShells(vm, dt) {
+  for (const s of vm.shells) {
+    if (s.life <= 0) continue
+    s.life -= dt
+    s.vel.y -= 5.5 * dt
+    s.mesh.position.addScaledVector(s.vel, dt)
+    s.mesh.rotation.x += s.spin.x * dt
+    s.mesh.rotation.y += s.spin.y * dt
+    s.mesh.rotation.z += s.spin.z * dt
+    if (s.life <= 0) s.mesh.visible = false
+  }
+}
+
+/** Builds a viewmodel weapon and works out where it sits when aimed. */
+function buildModel(id, att, rig) {
+  const model = createWeaponModel(id, att)
+  model.visible = false
+  // The knife reads better a size up in first person.
+  if (id === 'knife') model.scale.setScalar(KNIFE_VIEW_SCALE)
+  rig.add(model)
+  const pose = POSES[id] ?? POSES.ar
+  const sight = model.getObjectByName('sight')
+  if (pose.ads || !sight) {
+    model.userData.ads = new Vector3().fromArray(pose.ads ?? pose.hip)
+  } else {
+    // Put the sight line on the camera axis, `eye` metres ahead of the eye.
+    const eye = att?.optic && att.optic !== 'iron' ? (pose.opticEye ?? pose.eye) : pose.eye
+    model.userData.ads = new Vector3(-sight.position.x * VM_SCALE, -sight.position.y * VM_SCALE, -eye - sight.position.z * VM_SCALE)
+  }
+  return model
+}
+
+export function ViewModel() {
+  const size = useThree((s) => s.size)
+  const vm = useMemo(() => {
+    const scene = new Scene()
+    const camera = new PerspectiveCamera(62, 1, 0.01, 10)
+    scene.add(camera)
+    scene.add(new AmbientLight('#8a6a52', 0.35))
+    scene.add(new HemisphereLight('#ffe2bd', '#4a3a2c', 0.65))
+    const sun = new DirectionalLight('#ffcf94', 1.2)
+    sun.position.copy(SUN_DIR).multiplyScalar(5).add(new Vector3(0, 2, 2))
+    scene.add(sun)
+    // A studio rig that turns with the view so the gun always reads well: warm key
+    // over the shoulder, cool rim from beyond the muzzle, soft fill from the left.
+    const aim = new Object3D()
+    aim.position.set(0.1, -0.12, -0.45)
+    camera.add(aim)
+    for (const [color, intensity, pos] of [
+      ['#ffe6c4', 2.3, [1.2, 1.4, 1.0]],
+      ['#c4dcff', 1.8, [-0.6, 0.9, -2.0]],
+      ['#9fb2cc', 0.55, [-1.5, -0.3, 0.4]],
+    ]) {
+      const light = new DirectionalLight(color, intensity)
+      light.position.set(...pos)
+      light.target = aim
+      camera.add(light)
+    }
+
+    // Spent brass: a small pool of casings flung out of the ejection port.
+    const shellGeos = {
+      rifle: new CylinderGeometry(0.0029, 0.0029, 0.027, 10).rotateX(Math.PI / 2),
+      pistol: new CylinderGeometry(0.0027, 0.0027, 0.0125, 10).rotateX(Math.PI / 2),
+      sniper: new CylinderGeometry(0.0039, 0.0036, 0.042, 10).rotateX(Math.PI / 2),
+    }
+    const shells = Array.from({ length: 14 }, () => {
+      const mesh = new Mesh(shellGeos.rifle, weaponMaterials.brass)
+      mesh.visible = false
+      camera.add(mesh)
+      return { mesh, vel: new Vector3(), spin: new Vector3(), life: 0 }
+    })
+
+    const rig = new Group()
+    rig.scale.setScalar(VM_SCALE)
+    camera.add(rig)
+    // Built lazily per weapon + attachment combo; geometry is shared, so these are cheap.
+    const models = new Map()
+    const armR = makeArm(1)
+    const armL = makeArm(-1)
+    camera.add(armR, armL)
+    const grenades = { frag: createWeaponModel('frag'), flash: createWeaponModel('flash'), smoke: createWeaponModel('smoke') }
+    for (const g of Object.values(grenades)) {
+      g.visible = false
+      armL.add(g)
+      g.scale.setScalar(0.55)
+      g.position.set(0, 0.03, -0.03)
+    }
+
+    const flash = new Sprite(
+      new SpriteMaterial({ map: flareTexture(), color: '#ffd28a', blending: AdditiveBlending, depthWrite: false, transparent: true }),
+    )
+    flash.visible = false
+    rig.add(flash)
+    const flashLight = new PointLight('#ffb35a', 0, 3, 2)
+    camera.add(flashLight)
+    flashLight.position.set(0.1, -0.05, -0.6)
+
+    return {
+      scene,
+      camera,
+      rig,
+      models,
+      armR,
+      armL,
+      grenades,
+      flash,
+      flashLight,
+      sprint: 0,
+      slide: 0,
+      sway: { x: 0, y: 0 },
+      visible: false,
+      magRest: new Map(),
+      shells,
+      shellGeos,
+      trail: (() => {
+        const t = makeTrail()
+        camera.add(t.mesh)
+        return t
+      })(),
+      nextShell: 0,
+      shotCount: 0,
+      lastBolt: -1,
+      drum: 0,
+      drumTarget: 0,
+      lastSince: 1,
+    }
+  }, [])
+
+  useEffect(() => {
+    runtime.vm = vm
+    return () => {
+      if (runtime.vm === vm) runtime.vm = null
+    }
+  }, [vm])
+
+  useEffect(() => {
+    vm.camera.aspect = size.width / size.height
+    vm.camera.updateProjectionMatrix()
+  }, [size, vm])
+
+  const lastWeapon = useRef('')
+
+  useFrame((_s, delta) => {
+    const dt = Math.min(delta, 0.05)
+    const a = runtime.vmState
+    const game = useGameStore.getState()
+    const show = Boolean(a) && game.gameState === 'playing' && runtime.local.alive && !a.climbing
+    // Fully scoped snipers see the scope overlay instead of the gun.
+    const scoped = a && a.weapon === 'sniper' && a.ads > 0.92
+    vm.visible = show && !scoped
+    if (!vm.visible) {
+      vm.flashLight.intensity = 0
+      return
+    }
+    if (runtime.envMap && vm.scene.environment !== runtime.envMap) {
+      vm.scene.environment = runtime.envMap
+      vm.scene.environmentIntensity = 0.95
+    }
+
+    const id = a.weapon
+    const key = `${id}:${a.att?.optic ?? ''}:${a.att?.muzzle ?? ''}:${a.att?.mag ?? ''}`
+    if (!vm.models.has(key)) vm.models.set(key, buildModel(id, a.att, vm.rig))
+    if (lastWeapon.current !== key) {
+      for (const [k, m] of vm.models) m.visible = k === key
+      lastWeapon.current = key
+    }
+    const model = vm.models.get(key)
+    const pose = POSES[id] ?? POSES.ar
+    const adsPose = model.userData.ads
+
+    // Mouse sway: the gun lags slightly behind the view.
+    vm.sway.x += (-a.lookDx * 0.00018 - vm.sway.x) * Math.min(1, dt * 10)
+    vm.sway.y += (a.lookDy * 0.00018 - vm.sway.y) * Math.min(1, dt * 10)
+    vm.sway.x = Math.max(-0.04, Math.min(0.04, vm.sway.x))
+    vm.sway.y = Math.max(-0.04, Math.min(0.04, vm.sway.y))
+    vm.sprint += ((a.sprint ? 1 : 0) - vm.sprint) * Math.min(1, dt * 9)
+
+    const t = smooth(a.ads)
+    const p = new Vector3().fromArray(pose.hip).lerp(adsPose, t)
+    const rx = pose.rot[0] * (1 - t)
+    let ry = pose.rot[1] * (1 - t)
+    let rz = pose.rot[2] * (1 - t)
+    let rxx = rx
+
+    const hipK = 1 - t * 0.85
+    p.x += (a.bob?.x ?? 0) * hipK + vm.sway.x * hipK
+    p.y += (a.bob?.y ?? 0) * hipK + vm.sway.y * hipK
+    ry += vm.sway.x * 2 * hipK
+
+    // Sprint: gun canted down and inward.
+    const sp = vm.sprint
+    p.x += 0.05 * sp
+    p.y -= 0.06 * sp
+    rxx -= 0.35 * sp
+    ry += 0.75 * sp
+    rz += 0.25 * sp
+
+    // Slide: gun canted over and pulled in.
+    vm.slide += ((a.slide ? 1 : 0) - vm.slide) * Math.min(1, dt * 10)
+    rz += 0.32 * vm.slide * (1 - t)
+    p.x -= 0.03 * vm.slide
+    p.y -= 0.025 * vm.slide
+
+    // Recoil kick.
+    const kick = a.kick * a.kick
+    const heavy = HEAVY[id] ?? 1
+    // Recoil pushes back and climbs, but much less when aimed so the sight stays usable.
+    p.z += 0.03 * kick * heavy * (1 - t * 0.4)
+    rxx += 0.07 * kick * heavy * (1 - t * 0.55)
+
+    // Reload: tilt the gun in, drop the empty mag, the off hand brings a fresh one
+    // up from the belt and slaps it home, then the gun rolls back level.
+    const mag = model.getObjectByName('mag')
+    if (mag && !vm.magRest.has(mag)) vm.magRest.set(mag, { p: mag.position.clone(), r: mag.rotation.clone() })
+    if (mag) {
+      const rest = vm.magRest.get(mag)
+      mag.position.copy(rest.p)
+      mag.rotation.copy(rest.r)
+      mag.visible = true
+    }
+    /** 0..1 how far the off hand is reaching for / holding the magazine. */
+    let magHand = 0
+    if (a.reload >= 0) {
+      const rl = Math.min(1, a.reload)
+      // Bring the gun up toward the middle and roll it so the magwell faces the
+      // off hand: the whole swap happens in view.
+      const tilt = Math.sin(Math.min(1, rl * 1.1) * Math.PI)
+      const lift = Math.min(1, tilt * 1.6)
+      p.y += 0.075 * lift
+      p.x -= 0.07 * lift
+      p.z += 0.04 * lift
+      rz -= 0.7 * lift
+      rxx += 0.18 * lift
+      ry += 0.12 * lift
+      if (mag) {
+        if (rl < 0.14) {
+          // Thumb the release.
+          magHand = rl / 0.14
+        } else if (rl < 0.34) {
+          // Empty mag falls out, tumbling.
+          const f = (rl - 0.14) / 0.2
+          mag.position.y -= 0.9 * f * f
+          mag.position.z += 0.12 * f
+          mag.rotation.x += 1.4 * f
+          mag.visible = f < 0.95
+          magHand = Math.max(0, 1 - f * 2)
+        } else if (rl < 0.62) {
+          // Fresh mag rises with the hand into the well.
+          const f = (rl - 0.34) / 0.28
+          const e = f * f * (3 - 2 * f)
+          mag.position.y -= 0.32 * (1 - e)
+          mag.position.z -= 0.06 * (1 - e)
+          mag.rotation.x -= 0.35 * (1 - e)
+          magHand = 1
+        } else {
+          // Seated: a quick slap jolts the gun, then the hand returns to the fore-end.
+          const f = (rl - 0.62) / 0.38
+          if (f < 0.12) rxx -= 0.06 * Math.sin((f / 0.12) * Math.PI)
+          magHand = Math.max(0, 1 - f * 3)
+        }
+      }
+    }
+
+    // Weapon swap: comes up from below. The knife is flipped up into the hand,
+    // spinning once round its own length.
+    if (a.swap >= 0) {
+      const low = 1 - smooth(Math.min(1, a.swap))
+      p.y -= 0.22 * low
+      rxx -= 0.9 * low
+      if (id === 'knife') rz += low * Math.PI * 2
+    }
+
+    // Melee: the knife slashes across; any other weapon does a quick bash.
+    if (a.melee >= 0) {
+      const m = Math.sin(a.melee * Math.PI)
+      if (id === 'knife') {
+        const o = knifeSlash(a.melee, (a.meleeIndex ?? 0) % 2 ? -1 : 1)
+        p.x += o.x
+        p.y += o.y
+        p.z += o.z
+        rxx += o.rx
+        ry += o.ry
+        rz += o.rz
+      } else {
+        p.z -= 0.14 * m
+        p.x -= 0.05 * m
+        rxx -= 0.25 * m
+        rz += 0.4 * m
+      }
+    }
+
+    // Grenades: lower the gun while the left hand cooks / throws.
+    const throwing = a.throw >= 0
+    if (a.cooking || throwing) {
+      const lower = a.cooking ? 1 : Math.sin(a.throw * Math.PI)
+      p.y -= 0.12 * lower
+      rxx -= 0.4 * lower
+    }
+
+    const newShot = (a.sinceShot ?? 1) < vm.lastSince
+    // Pistol slide: snaps back and forward on every shot, locks open when empty.
+    const slide = model.getObjectByName('slide')
+    if (slide) {
+      if (slide.userData.restZ === undefined) slide.userData.restZ = slide.position.z
+      const since = a.sinceShot ?? 1
+      let back = since < 0.075 ? Math.sin((since / 0.075) * Math.PI) : 0
+      if (a.empty) back = 0.85
+      slide.position.z = slide.userData.restZ + 0.032 * back
+    }
+
+    // Sniper bolt cycle; the revolver's cylinder indexes one chamber per shot.
+    const bolt = model.getObjectByName('bolt')
+    if (bolt && !bolt.userData.rest) bolt.userData.rest = bolt.position.clone()
+    if (bolt && id === 'sniper') {
+      const rest = bolt.userData.rest
+      if (a.bolt >= 0 && a.bolt < 0.8) {
+        const b = Math.sin((a.bolt / 0.8) * Math.PI)
+        bolt.rotation.z = 1.2 * b
+        bolt.position.z = rest.z + 0.07 * b
+        p.y -= 0.02 * b
+        rz += 0.15 * b
+      } else {
+        bolt.rotation.z = 0
+        bolt.position.z = rest.z
+      }
+    } else if (bolt && id === 'viper') {
+      if (a.sinceShot < vm.lastSince) vm.drumTarget += (Math.PI * 2) / 6
+      vm.drum += (vm.drumTarget - vm.drum) * Math.min(1, dt * 22)
+      bolt.rotation.z = vm.drum
+      // Reload: the cylinder swings out to the left.
+      const swing = a.reload >= 0 ? Math.sin(Math.min(1, a.reload) * Math.PI) : 0
+      bolt.position.x = bolt.userData.rest.x - 0.035 * Math.min(1, swing * 1.6)
+    }
+    vm.lastSince = a.sinceShot ?? 1
+
+    vm.rig.position.copy(p)
+    vm.rig.rotation.set(rxx, ry, rz)
+    vm.rig.updateMatrixWorld(true)
+
+    // Brass: out of the port on each shot (on the bolt's backstroke for the sniper).
+    const eject = model.getObjectByName('eject')
+    const boltEject = id === 'sniper' && vm.lastBolt < 0.42 && a.bolt >= 0.42
+    if (eject && ((newShot && id !== 'sniper') || boltEject)) {
+      ejectShell(vm, eject, id === 'sniper' ? 'sniper' : id === 'ar' ? 'rifle' : 'pistol')
+    }
+    vm.lastBolt = a.bolt ?? -1
+    updateShells(vm, dt)
+    updateTrail(vm, model, id === 'knife' && a.melee >= 0.16 && a.melee < 0.46)
+
+    // Arms follow the weapon: right hand on the grip, left on the support point.
+    const toCam = (local, out) => {
+      out.copy(local)
+      model.localToWorld(out)
+      vm.camera.worldToLocal(out)
+      return out
+    }
+    const wristR = toCam(id === 'knife' ? _b.set(0, 0, 0.03) : GRIP, new Vector3())
+    placeArm(vm.armR, wristR, ELBOW_R)
+
+    const grenadeKind = a.grenadeKind ?? 'frag'
+    for (const [k, g] of Object.entries(vm.grenades)) g.visible = (a.cooking || throwing) && k === grenadeKind
+    if (a.cooking || throwing) {
+      const tw = throwing ? smooth(a.throw) : 0
+      const wristL = new Vector3(-0.17 + 0.1 * tw, -0.13 + 0.09 * Math.sin(tw * Math.PI), -0.32 - 0.18 * tw)
+      placeArm(vm.armL, wristL, ELBOW_L)
+      vm.armL.visible = true
+    } else if (id === 'knife') {
+      vm.armL.visible = false
+    } else {
+      const support = model.getObjectByName('leftHand')
+      const wristL = support ? toCam(support.position, new Vector3()) : new Vector3(-0.07, -0.13, -0.32)
+      if (magHand > 0 && mag) {
+        // Hand on the magazine (just below its middle) while it's out of the gun.
+        mag.getWorldPosition(_b)
+        vm.camera.worldToLocal(_b)
+        _b.y -= 0.03
+        wristL.lerp(_b, magHand)
+      }
+      placeArm(vm.armL, wristL, ELBOW_L)
+      vm.armL.visible = true
+    }
+
+    // Muzzle flash.
+    const muzzle = model.getObjectByName('muzzle')
+    const flashing = a.muzzleFlash && id !== 'knife'
+    vm.flash.visible = flashing
+    if (flashing && muzzle) {
+      vm.flash.position.copy(muzzle.position)
+      model.localToWorld(vm.flash.position)
+      vm.rig.worldToLocal(vm.flash.position)
+      // Rig-local units (the rig is scaled by VM_SCALE). A suppressor leaves a faint puff.
+      const s = (FLASH_SIZE[id] ?? 0.3) * (a.quiet ? 0.3 : 1) * (0.8 + Math.random() * 0.4)
+      vm.flash.scale.setScalar(s)
+      vm.flash.material.rotation = Math.random() * Math.PI
+    }
+    vm.flashLight.intensity = flashing ? (a.quiet ? 0.8 : 6) : 0
+
+    // Optics narrow the viewmodel FOV further so the sight window reads bigger.
+    const fov = 62 - (a.att?.optic && a.att.optic !== 'iron' ? 17 : 10) * t
+    if (Math.abs(vm.camera.fov - fov) > 0.05) {
+      vm.camera.fov = fov
+      vm.camera.updateProjectionMatrix()
+    }
+  })
+
+  return null
+}
+
+/**
+ * Draws the world, then the viewmodel on top with a fresh depth buffer, then
+ * (above Low quality) runs the colour grade over the result.
+ */
+export function RenderPipeline() {
+  const gl = useThree((s) => s.gl)
+  const quality = useGameStore((s) => s.settings.quality)
+  const grade = useMemo(() => (ColorGrade.supported(gl) ? new ColorGrade() : null), [gl])
+  useEffect(() => () => grade?.dispose(), [grade])
+
+  useFrame(({ gl: renderer, scene, camera }) => {
+    renderer.autoClear = false
+    const graded = grade && quality !== 'low'
+    if (graded) grade.begin(renderer)
+    else renderer.clear()
+    renderer.render(scene, camera)
+    const vm = runtime.vm
+    if (vm?.visible) {
+      renderer.clearDepth()
+      renderer.render(vm.scene, vm.camera)
+    }
+    if (graded) grade.end(renderer)
+  }, 1)
+  return null
+}
+
+export default ViewModel

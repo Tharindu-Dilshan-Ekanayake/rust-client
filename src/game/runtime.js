@@ -1,0 +1,72 @@
+import { Vector3 } from 'three'
+
+/**
+ * Mutable per-frame game state, shared between the network layer, the R3F scene
+ * and the HUD's animation-frame readers.
+ *
+ * Deliberately not React state: these values change every frame and are read
+ * inside `useFrame` / requestAnimationFrame, never rendered directly.
+ */
+export const runtime = {
+  /** Raw Rapier world + module, set once the map's physics has mounted. */
+  world: null,
+  rapier: null,
+  camera: null,
+
+  local: {
+    feet: new Vector3(),
+    vel: new Vector3(),
+    yaw: 0,
+    pitch: 0,
+    eyeHeight: 1.62,
+    crouch: false,
+    grounded: true,
+    climbing: false,
+    sprinting: false,
+    alive: false,
+    seq: 0,
+    /** 0 = hip, 1 = fully aimed down sights. */
+    ads: 0,
+    weapon: 'ar',
+    /** World-space muzzle of the first-person gun, for tracer origins. */
+    muzzle: new Vector3(),
+    collider: null,
+  },
+
+  view: {
+    recoilPitch: 0,
+    recoilYaw: 0,
+    shake: 0,
+    /** Seconds of flashbang whiteout remaining, and the starting amount for the fade curve. */
+    flash: 0,
+    flashMax: 0,
+    scoped: false,
+    /** Current crosshair spread in radians, for the HUD. */
+    spread: 0,
+    cookStart: 0,
+    sway: { x: 0, y: 0 },
+    breath: 1,
+    holdingBreath: false,
+    fps: 0,
+  },
+
+  /** id -> interpolated view of a remote player (see net/network.js). */
+  remotes: new Map(),
+
+  /** Where the death camera looks from / at. */
+  death: { at: new Vector3(), killerId: '' },
+}
+
+/* Minimal event bus between the network layer and scene components. */
+const listeners = new Map()
+
+export function on(type, fn) {
+  if (!listeners.has(type)) listeners.set(type, new Set())
+  listeners.get(type).add(fn)
+  return () => listeners.get(type)?.delete(fn)
+}
+
+export function emit(type, payload) {
+  const set = listeners.get(type)
+  if (set) for (const fn of set) fn(payload)
+}
