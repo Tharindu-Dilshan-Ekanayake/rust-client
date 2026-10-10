@@ -529,7 +529,7 @@ export function ViewModel() {
       const low = 1 - smooth(Math.min(1, a.swap))
       p.y -= 0.22 * low
       rxx -= 0.9 * low
-      if (id === 'knife') rz += low * Math.PI * 2
+      if (id === 'knife' && !a.quickKnife) rz += low * Math.PI * 2
     }
 
     // Melee: the knife slashes across; any other weapon does a quick bash.

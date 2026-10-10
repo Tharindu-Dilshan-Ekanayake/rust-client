@@ -285,7 +285,7 @@ class Network {
       const r = runtime.remotes.get(m.id)
       if (!r) return
       r.meleeAt = performance.now()
-      sfx.play(r.weapon === 'knife' ? 'knifeSwing' : 'meleeSwing', { pos: [r.pos.x, r.pos.y + 1.2, r.pos.z], volume: 0.8 })
+      sfx.play('knifeSwing', { pos: [r.pos.x, r.pos.y + 1.2, r.pos.z], volume: 0.8 })
     })
     on('act', (m) => {
       const r = runtime.remotes.get(m.id)

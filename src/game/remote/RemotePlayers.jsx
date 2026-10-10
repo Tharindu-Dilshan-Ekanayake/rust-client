@@ -216,7 +216,8 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
 
     // --- Held weapon ---------------------------------------------------------------------------
     const w = weaponRef.current
-    const weaponId = r.weapon || 'ar'
+    // A melee (V or a slash) puts the knife in hand for the swing.
+    const weaponId = now - (r.meleeAt ?? -1e9) < 520 ? 'knife' : r.weapon || 'ar'
     const kitKey = `${weaponId}|${r.kit ?? ''}`
     if (holder.current && w.id !== kitKey) {
       holder.current.clear()

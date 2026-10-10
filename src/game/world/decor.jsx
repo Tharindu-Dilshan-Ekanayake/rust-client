@@ -42,6 +42,8 @@ export function Apc({ p, rotY }) {
         <Cyl r={0.07} h={2.0} position={[0, 0.32, -1.6]} rotation={[Math.PI / 2 - 0.25, 0, 0.1]} material={dark} />
         <Cyl r={0.32} h={0.12} position={[0.3, 0.66, 0.2]} material={dark} />
       </group>
+      {/* Hatch blown open: the fire inside glows through. */}
+      <Box size={[0.9, 0.04, 0.9]} position={[-0.6, 2.06, -1.0]} material={materials.ember()} shadow={false} />
       {/* Scorch-blackened side and a torn armour plate on the ground. */}
       <Box size={[0.02, 0.8, 2.4]} position={[1.31, 1.7, -0.2]} material={dark} shadow={false} />
       <Box size={[1.1, 0.06, 0.8]} position={[1.9, 0.1, 1.4]} rotation={[0.1, 0.5, 0.15]} material={hull} />

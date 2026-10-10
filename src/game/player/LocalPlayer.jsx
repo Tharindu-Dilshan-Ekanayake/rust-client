@@ -366,7 +366,7 @@ export function LocalPlayer() {
           v.z = ladder.exitDir[2] * 3
           v.y = 0.5
         }
-        if (climb < 0 && s.grounded && l.feet.y < 0.3) s.climbing = false
+        if (climb < 0 && s.grounded && l.feet.y < ladder.base + 0.3) s.climbing = false
         // A hand (and boot) on steel every other rung.
         const rung = Math.floor(l.feet.y / (ladder.rungs[1] * 2))
         if (rung !== s.climbRung && climb !== 0) sfx.play('ladderRung', { volume: 0.32 + Math.random() * 0.1 })

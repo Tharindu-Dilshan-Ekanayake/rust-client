@@ -130,6 +130,12 @@ function reflections(out, list) {
   }
 }
 
+/** tanh soft clip (density without hard clipping), peak-preserving. */
+function softClip(out, drive) {
+  const k = Math.tanh(drive)
+  for (let i = 0; i < out.length; i++) out[i] = Math.tanh(out[i] * drive) / k
+}
+
 /** tanh soft clip for density, then normalise to `level` peak. */
 function finish(out, { drive = 1, level = 0.9, fadeOut = 0.02 } = {}) {
   let peak = 1e-6
@@ -190,8 +196,12 @@ function gunshot(p, seed) {
   }
   if (p.tail) noiseLayer(out, rand, { start: 0.015, dur: p.len - 0.015, tau: p.tail.tau, att: 0.02, freq: p.tail.freq, freqTo: p.tail.freq * 0.35, gain: p.tail.gain })
   if (p.extra) p.extra(out, rand)
+  // Saturate the shot itself, then add the echoes at their own level. (Echoes
+  // added before the soft clip came back nearly as loud as the shot, and read
+  // as a second, muffled bang a few hundred ms later.)
+  softClip(out, p.drive ?? 3.2)
   reflections(out, p.refl)
-  return finish(out, { drive: p.drive ?? 3.2, level: 0.95 })
+  return finish(out, { level: 0.95 })
 }
 
 const REFL_NEAR = [
@@ -272,13 +282,12 @@ const GUNS = {
     blast: { tau1: 0.0035, tau2: 0.05, freq: 5600, freqTo: 420, mid: 1300, punch: 1.0, body: 1.45 },
     pulse: { len: 0.014, gain: 1.6 },
     low: { freq: 120, tau: 0.08, gain: 1.4 },
-    tail: { tau: 0.6, freq: 1100, gain: 0.26 },
+    tail: { tau: 0.45, freq: 1100, gain: 0.2 },
     drive: 4,
     refl: [
-      { delay: 0.05, gain: 0.42, cutoff: 2200 },
-      { delay: 0.16, gain: 0.3, cutoff: 1200 },
-      { delay: 0.34, gain: 0.22, cutoff: 800 },
-      { delay: 0.6, gain: 0.14, cutoff: 600 },
+      { delay: 0.05, gain: 0.3, cutoff: 2200 },
+      { delay: 0.16, gain: 0.16, cutoff: 1200 },
+      { delay: 0.34, gain: 0.08, cutoff: 700 },
     ],
   },
   shotgun: {

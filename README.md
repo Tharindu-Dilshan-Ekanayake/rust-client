@@ -3,10 +3,22 @@
 Browser FPS built with React Three Fiber + Rapier, played with your **Bloxity**
 avatar. Up to 8 players per lobby, Team Deathmatch or Free-for-all, on
 *Dustline Pumpstation* — a 60 × 60 m oil yard in a hazy desert, styled after
-MW's Rust: a central derrick tower (one exposed ladder to the lookout deck),
-tall concrete T-walls with rusty mesh and razor wire, an elevated pipeline you
-can walk under, container stacks with graffiti and deck tanks, war-damaged ruins,
-and a rail spur, storage tanks and hills out past the wall.
+MW's Rust. In the middle stands the refinery: a corrugated pump hall with an
+open bay, a deck over them reached by a conveyor ramp, a clad process tower with
+the company plate and a burning flare stack, and a raised tank platform. The
+derrick tower (one exposed ladder to its lookout deck) stands in the north-east
+corner by the pipeline, which runs along the north wall with a lane underneath; its
+torn west end has dropped into the sand and makes a ramp up onto the pipe.
+The tank yard (stairs and a catwalk over the tank tops) holds the opposite,
+south-west corner, so both high points are neutral corners the same distance
+from each spawn. Round them: tall concrete T-walls with rusty mesh and razor wire, container stacks with graffiti and
+deck tanks, shelled two-storey block buildings with sand banked against them,
+and burnt-out vehicles (a fuel tanker, an APC, trucks) still burning, with black
+smoke leaning downwind. The refinery deck can be reached three ways: the
+conveyor (west), the south stairs and the bay ladder (east). A dust storm blows
+through the whole match: debris whipping past, sand sheets low over the ground,
+and gusts that close the haze in. Out past the wall: a rail spur, storage tanks
+and hills.
 
 Classes pick a primary (VX-7 AR, VK-9 Vandal SMG, Breacher 12 pump shotgun,
 Longhaul .50 sniper, Bulldog LMG), a secondary (Kestrel P9, Viper .45 revolver,
@@ -27,9 +39,9 @@ end screen. XP lives in this browser (`localStorage`), see
 
 ## Ladders
 
-The derrick tower and both container stacks with deck tanks have ladders. Walk
-into one looking at it and hold W to climb; at the top you step off onto the
-deck. To get down, walk off the top onto the ladder (W goes down while you face
+The derrick tower, both container stacks with deck tanks and the refinery
+(ground → deck → tank platform → process tower roof) have ladders. Walk into
+one looking at it and hold W to climb; at the top you step off onto the deck. To get down, walk off the top onto the ladder (W goes down while you face
 away from it, S while you face it), or press Space to jump off. Your hands work
 hand over hand up the rungs, and others see you face the ladder and climb it.
 
@@ -53,7 +65,7 @@ out of the box. See `.env.example` (also `VITE_GAME_SLUG` for Bloxity login).
 | Ctrl | Prone / stand (mid-match the browser asks before Ctrl+W closes the tab) |
 | R | Reload |
 | 1 / 2 / 3, mouse wheel | Primary / secondary / knife |
-| V | Quick melee (lunges at close targets) |
+| V | Quick knife: whips the knife out for a slash with any weapon (lunges at close targets) |
 | G (hold) | Cook + throw frag |
 | Q | Flashbang or smoke |
 | B | Change class (applies next spawn) |

@@ -145,7 +145,7 @@ export function Tower(t) {
   const wireR = mi + (mastTop - mi) * 0.55
 
   return (
-    <group>
+    <group position={t.p}>
       {[-1, 1].map((sx) =>
         [-1, 1].map((sz) => (
           <Box key={`${sx}${sz}`} size={[ls, lh, ls]} position={[sx * li, lh / 2, sz * li]} material={frame} />
@@ -222,10 +222,10 @@ export function Tower(t) {
       <Cyl r={0.14} h={1.6} position={[0.9, 0.5, 0.55]} rotation={[Math.PI / 2, 0, 0]} material={materials.rust()} />
 
       {/* Guy wires from the mast to ground anchors */}
-      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => (
-        <group key={`${sx}${sz}`}>
-          <Rod a={[sx * wireR, wireY, sz * wireR]} b={[sx * 9.5, 0.1, sz * 9.5]} r={0.018} material={materials.wire()} />
-          <Box size={[0.7, 0.1, 0.7]} position={[sx * 9.5, 0.05, sz * 9.5]} material={materials.concreteDark()} tile={1} />
+      {t.guys.map(([gx, gz]) => (
+        <group key={`${gx}${gz}`}>
+          <Rod a={[Math.sign(gx) * wireR, wireY, Math.sign(gz) * wireR]} b={[gx, 0.1, gz]} r={0.018} material={materials.wire()} />
+          <Box size={[0.7, 0.1, 0.7]} position={[gx, 0.05, gz]} material={materials.concreteDark()} tile={1} />
         </group>
       ))}
     </group>
@@ -280,24 +280,24 @@ export function Catwalk({ p, length, width }) {
  * with rungs, stand-off brackets back to the wall, and goose-neck grab rails
  * that curl over onto the deck so you can haul yourself off the top.
  */
-export function Ladder({ foot, dir, topY, rungs: [first, step] }) {
+export function Ladder({ foot, dir, topY, base = 0, rungs: [first, step] }) {
   const pieces = useMemo(() => {
     const out = []
     const side = [-dir[2], 0, dir[0]]
     const at = (along, lateral, y) => [foot[0] + dir[0] * along + side[0] * lateral, y, foot[1] + dir[2] * along + side[2] * lateral]
     // Boxes are built along x (lateral) and z (along dir), then turned to face the wall.
     const quat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.atan2(dir[0], dir[2]))
-    const railH = topY + 1.0
+    const railH = topY + 1.0 - base
     for (const l of [-0.25, 0.25]) {
-      out.push({ geometry: boxGeo(0.06, railH, 0.06, 1), position: at(0, l, railH / 2), quaternion: quat })
+      out.push({ geometry: boxGeo(0.06, railH, 0.06, 1), position: at(0, l, base + railH / 2), quaternion: quat })
       // Goose neck: over the edge and down onto the deck.
-      out.push({ geometry: boxGeo(0.05, 0.05, 0.5, 1), position: at(0.22, l, railH), quaternion: quat })
+      out.push({ geometry: boxGeo(0.05, 0.05, 0.5, 1), position: at(0.22, l, topY + 1.0), quaternion: quat })
       out.push({ geometry: boxGeo(0.05, 1.0, 0.05, 1), position: at(0.47, l, topY + 0.5), quaternion: quat })
-      for (let y = 1.2; y < topY; y += 1.7) out.push({ geometry: boxGeo(0.04, 0.04, 0.14, 1), position: at(0.07, l, y), quaternion: quat })
+      for (let y = base + 1.2; y < topY; y += 1.7) out.push({ geometry: boxGeo(0.04, 0.04, 0.14, 1), position: at(0.07, l, y), quaternion: quat })
     }
     for (let y = first; y <= topY + 0.01; y += step) out.push({ geometry: boxGeo(0.5, 0.035, 0.035, 1), position: at(0, 0, y), quaternion: quat })
     return out
-  }, [foot, dir, topY, first, step])
+  }, [foot, dir, topY, base, first, step])
   const geometry = useMerged(pieces)
   return <mesh geometry={geometry} material={materials.hazard()} castShadow receiveShadow />
 }
@@ -427,12 +427,51 @@ function TornLip({ at, dir, r, seed, material }) {
   )
 }
 
-export function Pipe({ a, b, r, open, material }) {
+const BOLTS = 16
+const boltGeo = boxGeo(0.06, 0.3, 0.06, 1)
+
+export function Pipe({ a, b, r, open, material, joints = 6 }) {
   const t = useMemo(() => segmentTransform(a, b), [a, b])
   const dir = useMemo(() => new Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize(), [a, b])
-  const flanges = []
-  for (let d = 3; d < t.length - 1; d += 6) flanges.push(d)
+  const flanges = useMemo(() => {
+    const out = []
+    if (joints) for (let d = 3; d < t.length - 1; d += joints) out.push(d)
+    return out
+  }, [t, joints])
   const at = (d) => [a[0] + dir.x * d, a[1] + dir.y * d, a[2] + dir.z * d]
+  // Flange rings merged into one mesh; bolts round each joint as one instanced mesh.
+  const ringGeo = useMerged(
+    useMemo(
+      () =>
+        flanges.flatMap((d) => [
+          { geometry: cylGeo(r + 0.11, 0.08, 30, 1), position: at(d - 0.06), quaternion: t.quaternion },
+          { geometry: cylGeo(r + 0.11, 0.08, 30, 1), position: at(d + 0.06), quaternion: t.quaternion },
+          { geometry: cylGeo(r + 0.05, 0.05, 30, 1), position: at(d), quaternion: t.quaternion },
+        ]),
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- at() derives from a/dir
+      [flanges, r, t, a, dir],
+    ),
+  )
+  const setBolts = (mesh) => {
+    if (!mesh) return
+    const side = new Vector3(0, 1, 0).cross(dir)
+    if (side.lengthSq() < 1e-4) side.set(1, 0, 0)
+    side.normalize()
+    const up = dir.clone().cross(side).normalize()
+    const o = new Object3D()
+    let i = 0
+    for (const d of flanges) {
+      const c = at(d)
+      for (let k = 0; k < BOLTS; k++) {
+        const ang = (k / BOLTS) * Math.PI * 2
+        o.position.set(c[0], c[1], c[2]).addScaledVector(side, Math.cos(ang) * (r + 0.075)).addScaledVector(up, Math.sin(ang) * (r + 0.075))
+        o.quaternion.copy(t.quaternion)
+        o.updateMatrix()
+        mesh.setMatrixAt(i++, o.matrix)
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true
+  }
   const caps = useMemo(() => {
     const capQuat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), dir)
     const flip = capQuat.clone().multiply(new Quaternion().setFromAxisAngle(_y, Math.PI))
@@ -454,9 +493,8 @@ export function Pipe({ a, b, r, open, material }) {
         // Inside a torn pipe the far cap must read as dark interior, not lit steel.
         <mesh key={i} geometry={capGeo} material={open ? materials.pipeInside() : skin} position={c.p} quaternion={c.q} />
       ))}
-      {flanges.map((d) => (
-        <mesh key={d} geometry={cylGeo(r + 0.07, 0.18, 30, 1)} material={materials.rust()} position={at(d)} quaternion={t.quaternion} castShadow />
-      ))}
+      {flanges.length > 0 && <mesh geometry={ringGeo} material={materials.rust()} castShadow receiveShadow />}
+      {flanges.length > 0 && <instancedMesh args={[boltGeo, materials.steelDark(), flanges.length * BOLTS]} ref={setBolts} />}
       {(open === 'a' || open === 'both') && <TornLip at={a} dir={[-dir.x, -dir.y, -dir.z]} r={r} seed={Math.round(a[0] * 31 + a[2] * 17)} material={skin} />}
       {(open === 'b' || open === 'both') && <TornLip at={b} dir={[dir.x, dir.y, dir.z]} r={r} seed={Math.round(b[0] * 29 + b[2] * 13)} material={skin} />}
     </group>
@@ -465,23 +503,40 @@ export function Pipe({ a, b, r, open, material }) {
 
 /** The elevated pipeline: pipe runs on H-frame racks, with the broken section. */
 export function Pipeline() {
-  const { pipes, racks, fallen, dir } = useMemo(() => pipelinePieces(), [])
+  const { pipes, racks, fallen, service, dir } = useMemo(() => pipelinePieces(), [])
   const h = PIPELINE.height - PIPELINE.radius
   const rackParts = useMemo(() => {
     const steel = []
     const concrete = []
+    const dark = []
     for (const rack of racks) {
       const rot = [0, rack.yaw, 0]
       for (const side of [-1, 1]) {
         const leg = yawOffset(rack.p, side * PIPELINE.rackHalf, 0, rack.yaw)
         steel.push({ geometry: boxGeo(0.22, h, 0.22, 1), position: [leg[0], h / 2, leg[2]], rotation: rot })
-        concrete.push({ geometry: boxGeo(0.55, 0.25, 0.55, 1), position: [leg[0], 0.1, leg[2]], rotation: rot })
+        concrete.push({ geometry: boxGeo(0.6, 0.3, 0.6, 1), position: [leg[0], 0.12, leg[2]], rotation: rot })
+        // Knee braces up into the crossbeam.
+        const knee = yawOffset(rack.p, side * (PIPELINE.rackHalf - 0.45), 0, rack.yaw)
+        const t = segmentTransform([leg[0], h - 0.7, leg[2]], [knee[0], h - 0.15, knee[2]])
+        steel.push({ geometry: boxGeo(0.09, t.length, 0.09, 1), position: t.position, quaternion: t.quaternion })
       }
       steel.push({ geometry: boxGeo(PIPELINE.rackHalf * 2 + 0.22, 0.18, 0.22, 1), position: [rack.p[0], h - 0.09, rack.p[2]], rotation: rot })
-      steel.push({ geometry: boxGeo(PIPELINE.rackHalf * 2, 0.1, 0.1, 1), position: [rack.p[0], h * 0.45, rack.p[2]], rotation: rot })
+      // Saddle the pipe sits in, and the U-strap over it.
+      dark.push({ geometry: boxGeo(0.34, 0.32, 1.5, 1), position: [rack.p[0], h + 0.1, rack.p[2]], rotation: rot })
     }
-    return { steel, concrete }
+    // Bellows of the expansion joint.
+    for (let i = -3; i <= 3; i++) {
+      dark.push({ geometry: cylGeo(PIPELINE.radius + 0.07 + (i % 2 ? 0 : 0.04), 0.09, 30, 1), position: [PIPELINE.bellowsX + i * 0.13, PIPELINE.height, PIPELINE.z], rotation: [0, 0, Math.PI / 2] })
+    }
+    // Gate valve on the main: body, bonnet, stem, wheel hub.
+    const vx = PIPELINE.valveX
+    const top = PIPELINE.height + PIPELINE.radius
+    dark.push({ geometry: boxGeo(0.7, 0.7, 0.8, 1), position: [vx, top + 0.35, PIPELINE.z] })
+    dark.push({ geometry: boxGeo(0.45, 0.6, 0.5, 1), position: [vx, top + 1.0, PIPELINE.z] })
+    steel.push({ geometry: cylGeo(0.05, 0.9, 8, 1), position: [vx, top + 1.65, PIPELINE.z] })
+    return { steel, concrete, dark }
   }, [racks, h])
+  const darkGeo = useMerged(rackParts.dark)
   const steelGeo = useMerged(rackParts.steel)
   const concreteGeo = useMerged(rackParts.concrete)
   // Pipe clamps where the pipe sits on each rack.
@@ -489,18 +544,43 @@ export function Pipeline() {
   return (
     <group>
       {pipes.map((p, i) => (
-        <Pipe key={i} a={p.a} b={p.b} r={p.r} open={p.open} />
+        <Pipe key={i} a={p.a} b={p.b} r={p.r} open={p.open} joints={6} />
       ))}
-      <Pipe a={fallen.a} b={fallen.b} r={fallen.r} open="both" material={materials.rust()} />
+      {fallen.map((f, i) => (
+        <Pipe key={i} a={f.a} b={f.b} r={f.r} open="both" material={materials.rust()} joints={f.walk ? 4 : 0} />
+      ))}
+      {service.map((sv, i) => (
+        <Pipe key={`s${i}`} a={sv.a} b={sv.b} r={sv.r} joints={i === 0 ? 5 : 0} material={materials.rust()} />
+      ))}
+      <mesh geometry={darkGeo} material={materials.steelDark()} castShadow receiveShadow />
+      {/* Hand wheels: on the gate valve, and on the service line's valve by the ground. */}
+      <mesh position={[PIPELINE.valveX, PIPELINE.height + PIPELINE.radius + 2.1, PIPELINE.z]} rotation={[Math.PI / 2, 0, 0]} material={materials.barrel('#9b2f22')}>
+        <torusGeometry args={[0.38, 0.04, 6, 20]} />
+      </mesh>
+      <group position={[PIPELINE.small.dropX, 1.15, PIPELINE.z + PIPELINE.small.dz]}>
+        <mesh geometry={boxGeo(0.5, 0.5, 0.5, 1)} material={materials.steelDark()} castShadow />
+        <mesh position={[0, 0, 0.42]} material={materials.barrel('#9b2f22')}>
+          <torusGeometry args={[0.24, 0.03, 6, 16]} />
+        </mesh>
+      </group>
+      <mesh geometry={cylGeo(PIPELINE.small.r + 0.04, 0.6, 12, 1)} material={materials.concreteDark()} position={[PIPELINE.small.dropX, 0.3, PIPELINE.z + PIPELINE.small.dz]} receiveShadow />
       <mesh geometry={steelGeo} material={materials.tower()} castShadow receiveShadow />
       <mesh geometry={concreteGeo} material={materials.concreteDark()} receiveShadow />
+      <Box size={[1.8, PIPELINE.height + 1.4, 3.0]} position={[PIPELINE.from + 0.4, (PIPELINE.height + 1.4) / 2, PIPELINE.z]} material={materials.concreteDark()} tile={3} />
       {racks.map((rack, i) => (
         <mesh key={i} geometry={cylGeo(PIPELINE.radius + 0.04, 0.14, 24, 1)} material={materials.steelDark()} position={[rack.p[0], PIPELINE.height, rack.p[2]]} quaternion={clampQuat} />
       ))}
-      {/* Sand piled against the fallen section. */}
-      <mesh position={[(fallen.a[0] + fallen.b[0]) / 2, -0.2, (fallen.a[2] + fallen.b[2]) / 2]} scale={[3.1, 0.75, 1.9]} rotation={[0, Math.atan2(fallen.b[0] - fallen.a[0], fallen.b[2] - fallen.a[2]), 0]} material={materials.sand()} receiveShadow>
-        <sphereGeometry args={[1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
-      </mesh>
+      {/* Sand drifted over the low ends of the fallen lengths. */}
+      {fallen.map((f, i) => {
+        const low = f.a[1] < f.b[1] ? f.a : f.b
+        const lying = Math.abs(f.a[1] - f.b[1]) < 0.3
+        const at = lying ? [(f.a[0] + f.b[0]) / 2, -0.2, (f.a[2] + f.b[2]) / 2] : [low[0], -0.25, low[2]]
+        return (
+          <mesh key={i} position={at} scale={lying ? [3.1, 0.75, 1.9] : [2.2, 1.0, 2.0]} rotation={[0, Math.atan2(f.b[0] - f.a[0], f.b[2] - f.a[2]), 0]} material={materials.sand()} receiveShadow>
+            <sphereGeometry args={[1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          </mesh>
+        )
+      })}
     </group>
   )
 }
@@ -701,12 +781,13 @@ export function Perimeter() {
     for (const side of sides) {
       for (let c = -WALL_LINE + panel / 2; c < WALL_LINE; c += panel) {
         const crossing = PIPE_CROSSINGS.some(([n, at2]) => n === side.name && Math.abs(at2 - c) < 1.8)
-        if (crossing) continue
         const h = 3.25 + rand() * 0.35
         const tilt = (rand() - 0.5) * 0.03
         const rot = side.axis === 'x' ? [tilt, 0, 0] : [0, 0, tilt]
         walls.push({ geometry: shiftUv(boxGeo(...sz(side, panel - 0.05, h, 0.3), 3.4), rand()), position: at(side, c, h / 2), rotation: rot })
         footings.push({ geometry: boxGeo(...sz(side, panel - 0.05, 0.3, 0.7), 2), position: at(side, c, 0.15) })
+        // The pipe passes over this panel: no hooks or mesh above it.
+        if (crossing) continue
         // Two lifting hooks poking out of the top.
         for (const d of [-0.75, 0.75]) {
           hooks.push({ geometry: boxGeo(...sz(side, 0.04, 0.2, 0.04), 1), position: at(side, c + d - 0.07, h + 0.08) })
@@ -765,6 +846,17 @@ export function Perimeter() {
       {data.drifts.map((g, i) => (
         <mesh key={i} geometry={g} material={materials.sand()} receiveShadow />
       ))}
+      {/* Concrete collar where the pipeline goes through the wall. */}
+      {PIPE_CROSSINGS.map(([name, at]) => {
+        const p = name === 'east' || name === 'west' ? [name === 'east' ? WALL_LINE : -WALL_LINE, PIPELINE.height, at] : [at, PIPELINE.height, name === 'south' ? WALL_LINE : -WALL_LINE]
+        const rot = name === 'east' || name === 'west' ? [0, 0, Math.PI / 2] : [Math.PI / 2, 0, 0]
+        return (
+          <group key={name} position={p} rotation={rot}>
+            <mesh geometry={cylGeo(PIPELINE.radius + 0.22, 0.9, 24, 1)} material={materials.concreteDark()} castShadow receiveShadow />
+            <mesh geometry={cylGeo(PIPELINE.radius + 0.08, 1.4, 24, 1)} material={materials.steelDark()} castShadow />
+          </group>
+        )
+      })}
     </group>
   )
 }

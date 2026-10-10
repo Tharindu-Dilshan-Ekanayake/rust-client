@@ -130,6 +130,8 @@ export function Truck({ p, rotY }) {
       <Box size={[1.85, 0.32, 0.9]} position={[0, 1.2, -1.8]} rotation={[0.05, 0, 0]} material={body} tile={1.5} />
       <Box size={[1.85, 0.85, 0.78]} position={[0, 1.5, -0.98]} material={body} tile={1.5} />
       <Box size={[1.7, 0.45, 0.04]} position={[0, 1.65, -1.38]} material={materials.rubber()} shadow={false} />
+      {/* Cab burnt out: the roof is gone and the seats still glow. */}
+      <Box size={[1.6, 0.04, 0.6]} position={[0, 1.94, -0.98]} material={materials.ember()} shadow={false} />
       <Box size={[1.9, 0.1, 2.8]} position={[0, 1.08, 0.85]} material={body} tile={1.5} />
       {[-1, 1].map((s) => (
         <Box key={s} size={[0.08, 0.4, 2.8]} position={[s * 0.91, 1.3, 0.85]} material={body} tile={1.5} />

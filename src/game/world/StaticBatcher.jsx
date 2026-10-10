@@ -30,7 +30,7 @@ function isDynamic(obj, root) {
  * Instanced, skinned, transparent and `userData.dynamic` meshes are left alone.
  * Originals are hidden rather than removed, so React still owns them.
  */
-export function StaticBatcher({ children, cell = 16 }) {
+export function StaticBatcher({ children, cell = 32 }) {
   const root = useRef(null)
   const out = useRef(null)
 

@@ -142,8 +142,11 @@ export function GameCanvas() {
       dpr={DPR[quality] ?? DPR.high}
       camera={{ fov: 75, near: 0.05, far: 600, position: [30, 14, 30] }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, scene }) => {
         gl.domElement.setAttribute('data-game', '')
+        // Tests read draw-call counts from it (?debug).
+        runtime.gl = gl
+        runtime.scene = scene
       }}
     >
       <Suspense fallback={null}>

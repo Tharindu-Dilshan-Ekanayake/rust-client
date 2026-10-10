@@ -10,18 +10,19 @@ import { RankCard } from './Progression.jsx'
 
 const TIPS = [
   ['Cook grenades', ' by holding G — release to throw. Hold too long and it goes off in your hand.'],
-  ['Smoke blocks bot vision.', ' Pop one to cross the pipeline gap.'],
+  ['Smoke blocks bot vision.', ' Pop one to cross the open yard round the refinery.'],
   ['Hold Shift', ' while scoped with the Longhaul to steady your breath.'],
-  ['The tower ladder', ' is the only way up — and you can’t shoot while climbing.'],
+  ['The derrick ladder', ' is the only way up it — and you can’t shoot while climbing.'],
+  ['Run up the refinery conveyor', ' onto its deck; ladders go on up to the tank platform and the tower top.'],
   ['The container stacks have ladders.', ' Walk off the top onto one to slide back down.'],
-  ['Press V', ' to quick-melee with any weapon. Close the gap and it lunges.'],
+  ['Press V', ' to whip out the knife and slash with any weapon. Close the gap and it lunges.'],
   ['Change class with B', ' any time — it applies on your next spawn.'],
   ['Sprint and tap C', ' to slide into cover. Jump out of a slide to keep the speed.'],
   ['Hold C or press Ctrl', ' to go prone — steadier aim, smaller target.'],
   ['Dead players drop ammo.', ' Walk over the green boxes to resupply.'],
   ['The control shack', ' has an ammo crate that refills everything.'],
   ['Flashbangs', ' hit hardest if you’re looking at them. Turn away!'],
-  ['The torn end of the pipe', ' is a ramp — run along the top to reach the shack roof.'],
+  ['The fallen end of the pipeline', ' is a ramp — run up it and along the top of the pipe by the north wall.'],
 ]
 
 function Logo({ small = false }) {
@@ -197,7 +198,7 @@ const KEYS = [
   ['Shift + C', 'Slide (while sprinting)'],
   ['R', 'Reload'],
   ['1 / 2 / 3', 'Primary / secondary / knife'],
-  ['V', 'Quick melee'],
+  ['V', 'Quick knife'],
   ['G (hold)', 'Cook + throw frag'],
   ['Q', 'Tactical (flash / smoke)'],
   ['B', 'Change class'],

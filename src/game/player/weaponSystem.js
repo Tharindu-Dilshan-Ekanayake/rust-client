@@ -18,6 +18,9 @@ const _up = new Vector3()
 const _dir = new Vector3()
 
 const SLOT_KEYS = ['primary', 'secondary', 'melee']
+/** Quick knife (V with a gun out): seconds to whip the knife up, and to put it away after the slash. */
+const QUICK_KNIFE_DRAW = 0.1
+const QUICK_KNIFE_STOW = 0.14
 
 /** How much each shot blooms the cone; automatics bloom gently, everything else hard. */
 const BLOOM = { ar: 0.0055, hornet: 0.007, smg: 0.006, lmg: 0.005 }
@@ -296,15 +299,28 @@ export class WeaponSystem {
     return true
   }
 
+  /**
+   * Knife attack. Holding the knife it's a plain slash; with a gun out (V) the
+   * knife whips up into the hand, slashes, and the gun comes back up after.
+   */
   startMelee(now, ctx) {
     if (now - this.meleeStart < WEAPONS.knife.fireInterval) return
+    if (this.quickKnife && now < this.quickKnife.end) return
     this.cancelReload()
-    this.meleeStart = now
-    this.meleeHitAt = now + 0.12
+    const quick = this.current !== 'knife'
+    const lead = quick ? QUICK_KNIFE_DRAW : 0
+    this.meleeStart = now + lead
+    this.meleeHitAt = now + lead + 0.12
     this.meleeTarget = null
     this.meleeCount = (this.meleeCount ?? 0) + 1
-    this.meleeWithKnife = this.current === 'knife'
-    sfx.play(this.meleeWithKnife ? 'knifeSwing' : 'meleeSwing', { volume: 0.75 })
+    this.meleeWithKnife = true
+    this.quickKnife = quick ? { start: now, end: now + lead + 0.4 + QUICK_KNIFE_STOW } : null
+    if (quick) {
+      sfx.play('knifeDraw', { volume: 0.35 })
+      sfx.playSequence([[lead, 'knifeSwing']], { volume: 0.75 })
+    } else {
+      sfx.play('knifeSwing', { volume: 0.75 })
+    }
 
     // Pick the closest enemy roughly in front and within lunge range.
     const cam = ctx.camera
@@ -363,7 +379,11 @@ export class WeaponSystem {
       if (w.fireMode === 'pump') sfx.playSequence([[0, 'pumpBack'], [0.13, 'pumpForward']], { volume: 0.75 })
       else sfx.play('bolt', { volume: 0.7 })
     }
-    if (now >= this.boltUntil) this.boltSound = false
+    // Cycle done: clear it, or the sound above would fire again every frame.
+    if (this.boltUntil && now >= this.boltUntil) {
+      this.boltUntil = 0
+      this.boltSound = false
+    }
 
     if (canAct) {
       for (const slot of SLOT_KEYS) {
@@ -379,14 +399,20 @@ export class WeaponSystem {
     }
 
     const busyThrow = now - this.throwStart < 0.45
+    // Quick knife put away: the gun comes back up.
+    if (this.quickKnife && now >= this.quickKnife.end) {
+      this.quickKnife = null
+      this.switchStart = now
+      this.switchUntil = now + 0.22
+    }
     const switching = now < this.switchUntil
-    const meleeing = now - this.meleeStart < 0.4
+    const meleeing = now - this.meleeStart < 0.4 || Boolean(this.quickKnife)
 
     // Quick-melee hit lands a beat after the swing starts.
     if (this.meleeHitAt && now >= this.meleeHitAt) {
       this.meleeHitAt = 0
       net.send('ml', this.meleeTarget ? { h: this.meleeTarget } : {})
-      if (this.meleeTarget) sfx.play(this.meleeWithKnife ? 'knifeHit' : 'buttHit', { volume: 0.95 })
+      if (this.meleeTarget) sfx.play('knifeHit', { volume: 0.95 })
     }
 
     // --- Grenades: G cooks while held, Q throws the tactical ------------------
@@ -411,7 +437,7 @@ export class WeaponSystem {
     runtime.view.cookStart = this.cooking ? this.cookStart : 0
 
     // --- ADS ---------------------------------------------------------------------
-    const wantAds = canAct && input.mouse.right && !ctx.sprinting && !ctx.lowered && w.adsTime > 0 && !busyThrow && !this.cooking
+    const wantAds = canAct && input.mouse.right && !ctx.sprinting && !ctx.lowered && w.adsTime > 0 && !busyThrow && !this.cooking && !this.quickKnife
     const adsRate = w.adsTime > 0 ? 1 / w.adsTime : 10
     this.ads = Math.max(0, Math.min(1, this.ads + (wantAds ? adsRate : -adsRate * 1.4) * dt))
 
@@ -490,12 +516,21 @@ export class WeaponSystem {
   /** Viewmodel animation inputs (0..1 progress values, or -1 when idle). */
   animState(now) {
     const w = this.weapon
+    // Quick knife: the knife is what's in hand; it rises in, and drops away at the end.
+    const qk = this.quickKnife && now < this.quickKnife.end ? this.quickKnife : null
+    let swap = now < this.switchUntil ? (now - this.switchStart) / (this.switchUntil - this.switchStart) : -1
+    if (qk) {
+      const up = Math.min(1, (now - qk.start) / QUICK_KNIFE_DRAW)
+      const down = Math.min(1, (qk.end - now) / QUICK_KNIFE_STOW)
+      swap = Math.min(up, down) < 1 ? Math.min(up, down) : -1
+    }
     return {
-      weapon: this.current,
+      weapon: qk ? 'knife' : this.current,
+      quickKnife: Boolean(qk),
       ads: this.ads,
       kick: this.kick,
       reload: this.reloading ? (now - this.reloadStart) / (this.reloadUntil - this.reloadStart) : -1,
-      swap: now < this.switchUntil ? (now - this.switchStart) / (this.switchUntil - this.switchStart) : -1,
+      swap,
       melee: now - this.meleeStart < 0.4 ? (now - this.meleeStart) / 0.4 : -1,
       meleeIndex: this.meleeCount ?? 0,
       throw: now - this.throwStart < 0.45 ? (now - this.throwStart) / 0.45 : -1,
@@ -512,7 +547,7 @@ export class WeaponSystem {
       loaded: (this.ammo[w.id]?.mag ?? 0) > 0 || (this.reloading && (now - this.reloadStart) / (this.reloadUntil - this.reloadStart) > 0.62),
       sinceShot: now - this.lastShotAt,
       empty: (this.ammo[w.id]?.mag ?? 1) === 0,
-      att: w.att,
+      att: qk ? undefined : w.att,
       quiet: w.quiet,
       muzzleFlash: now - this.lastShotAt < 0.045,
     }

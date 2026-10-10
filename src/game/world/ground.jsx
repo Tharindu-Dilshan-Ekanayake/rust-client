@@ -200,8 +200,9 @@ function groundTexture() {
 }
 
 const PADS = [
-  { p: [0, 0, 0], size: [6.2, 6.2] },
-  { p: [16.6, 0, -19], size: [15, 8.4] },
+  // Under the derrick.
+  { p: [25, 0, -21], size: [6.2, 6.2] },
+  { p: [-22.6, 0, 25.5], size: [15, 8.4] },
   { p: [14.5, 0, 17], size: [3.4, 2.4] },
 ]
 

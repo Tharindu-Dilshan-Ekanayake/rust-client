@@ -21,12 +21,15 @@ import {
 } from './props.jsx'
 import { Apc, CamoNet, Culvert, Decor, Lamp, Pole, PowerLines, Rock } from './decor.jsx'
 import { DeckTank, Ground } from './ground.jsx'
+import { Refinery } from './refinery.jsx'
 import { Ruin } from './ruins.jsx'
+import { CarWreck, PipeStack, Tanker } from './wrecks.jsx'
 import StaticBatcher from './StaticBatcher.jsx'
 import { Catwalk, Container, Ladder, Landing, Perimeter, Pipeline, Shack, Stairs, Tank, Tower } from './structures.jsx'
 
 const RENDERERS = {
   tower: Tower,
+  refinery: Refinery,
   tank: Tank,
   catwalk: Catwalk,
   stairs: Stairs,
@@ -35,6 +38,9 @@ const RENDERERS = {
   pipeline: Pipeline,
   ruin: Ruin,
   apc: Apc,
+  tanker: Tanker,
+  car: CarWreck,
+  pipeStack: PipeStack,
   culvert: Culvert,
   rock: Rock,
   pole: Pole,

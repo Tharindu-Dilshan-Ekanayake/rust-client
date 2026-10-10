@@ -14,8 +14,9 @@ import {
 } from 'three'
 
 import { seededRandom } from '../shared/math.js'
-import { FOG_COLOR, SUN_DIR } from './environment.js'
+import { FOG_COLOR, STORM_WIND, SUN_DIR } from './environment.js'
 import { runtime } from './runtime.js'
+import { DustStorm } from './DustStorm.jsx'
 import { softDotTexture } from './world/textures.js'
 
 /**
@@ -31,9 +32,9 @@ function skyMaterial({ forEnvironment = false } = {}) {
         defines: forEnvironment ? { FOR_ENV: 1 } : {},
         uniforms: {
           horizon: { value: new Color(FOG_COLOR) },
-          mid: { value: new Color('#dcc29a') },
-          zenith: { value: new Color('#6f8fb3') },
-          sunColor: { value: new Color('#fff0cf') },
+          mid: { value: new Color('#bfa682') },
+          zenith: { value: new Color('#7f7a70') },
+          sunColor: { value: new Color('#ffcf98') },
           sunDir: { value: SUN_DIR.clone() },
         },
         vertexShader: /* glsl */ `
@@ -61,7 +62,10 @@ function skyMaterial({ forEnvironment = false } = {}) {
             vec3 col = mix(horizon, mid, smoothstep(0.0, 0.12, h));
             col = mix(col, zenith, smoothstep(0.1, 0.75, h));
             float s = max(dot(d, normalize(sunDir)), 0.0);
-            col += sunColor * (pow(s, 4.0) * 0.3 + pow(s, 48.0) * 0.55);
+            col += sunColor * (pow(s, 4.0) * 0.22 + pow(s, 48.0) * 0.4);
+            // Dark storm banks rolling across the upper sky.
+            float bank = sin(d.x * 7.0 + d.z * 3.0) * sin(d.z * 5.0 - d.x * 2.0);
+            col *= 1.0 - smoothstep(0.15, 0.6, h) * (0.1 + 0.08 * bank);
             // Dust banding low on the horizon.
             col = mix(col, horizon * 1.04, smoothstep(0.18, 0.0, h) * 0.35);
             col += sunColor * smoothstep(0.9993, 0.99965, s) * 2.0;
@@ -125,7 +129,7 @@ function SkyEnvironment() {
  * Fine sand carried on the wind: faint motes drifting low across the yard in one
  * direction (and wrapping round), rather than glitter hanging in the air.
  */
-const WIND = [1.6, 0.0, 0.7]
+const WIND = STORM_WIND.map((v) => v * 0.45)
 function WindDust({ count }) {
   const { geo, seeds } = useMemo(() => {
     const rand = seededRandom(613)
@@ -149,7 +153,7 @@ function WindDust({ count }) {
         size: 0.09,
         sizeAttenuation: true,
         transparent: true,
-        opacity: 0.32,
+        opacity: 0.4,
         depthWrite: false,
       }),
     [],
@@ -199,19 +203,19 @@ export function SceneEnvironment({ dust = true, quality = 'high' }) {
   return (
     <>
       <color attach="background" args={[FOG_COLOR]} />
-      <fog attach="fog" args={[FOG_COLOR, 34, 150]} />
+      <fog attach="fog" args={[FOG_COLOR, 20, 120]} />
       <SkyDome />
       <SkyEnvironment />
-      <hemisphereLight args={['#ffe2b8', '#7a5a3a', 0.75]} />
+      <hemisphereLight args={['#e6d2b2', '#6a5038', 0.72]} />
       {/* Cool bounce from the side away from the sun keeps shadowed faces readable. */}
-      <directionalLight position={SUN_DIR.clone().multiplyScalar(-40).setY(25).toArray()} color="#b4c2d8" intensity={0.5} />
-      <ambientLight color="#8a6a4c" intensity={0.25} />
+      <directionalLight position={SUN_DIR.clone().multiplyScalar(-40).setY(25).toArray()} color="#b4c2d8" intensity={0.75} />
+      <ambientLight color="#8a6a4c" intensity={0.34} />
       <directionalLight
         key={shadowSize}
         ref={sun}
         position={sunPos.toArray()}
-        color="#ffd29a"
-        intensity={3.4}
+        color="#ffc88e"
+        intensity={3.0}
         castShadow
         shadow-mapSize={[shadowSize, shadowSize]}
         shadow-camera-left={-46}
@@ -223,7 +227,8 @@ export function SceneEnvironment({ dust = true, quality = 'high' }) {
         shadow-bias={-0.0004}
         shadow-normalBias={0.05}
       />
-      {dust && quality !== 'low' && <WindDust count={quality === 'high' ? 420 : 220} />}
+      {dust && quality !== 'low' && <WindDust count={quality === 'high' ? 520 : 260} />}
+      {dust && <DustStorm quality={quality} />}
     </>
   )
 }
