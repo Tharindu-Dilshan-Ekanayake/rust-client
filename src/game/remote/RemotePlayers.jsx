@@ -83,7 +83,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     ik: null,
   })
   const ik = useMemo(() => ({ right: new Vector3(), left: new Vector3(), poleR: new Vector3(), poleL: new Vector3() }), [])
-  const smooth = useRef({ crouch: 0, prone: 0, slide: 0, aim: 1, lastStep: 0, wasSliding: false, deadPose: 0 })
+  const smooth = useRef({ crouch: 0, prone: 0, slide: 0, aim: 1, lastStep: 0, wasSliding: false, deadPose: 0, speed: 0, vy: 0 })
   const [avatarJson, setAvatarJson] = useState(() => runtime.remotes.get(id)?.avatar ?? '')
   const [plate, setPlate] = useState({ name: '', color: ENEMY_COLOR, onTop: false })
   const avatar = useMemo(() => parseAvatar(avatarJson), [avatarJson])
@@ -170,9 +170,15 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     // --- Motion inputs for the rig ----------------------------------------------------------
     const m = motion.current
     m.time += dt
-    m.speed = alive ? r.speed : 0
+    // Speed and climb rate as the rig sees them, smoothed over ~0.1 s: a real
+    // player's moves arrive with network jitter (bots' come off the server's
+    // own clock), and raw per-packet values made the legs stutter and flick
+    // into the jump pose on every step up.
+    s.speed += (r.speed - s.speed) * Math.min(1, dt * 10)
+    s.vy += (r.vy - s.vy) * Math.min(1, dt * 10)
+    m.speed = alive ? s.speed : 0
     m.maxSpeed = PLAYER.walkSpeed * (r.sprint ? PLAYER.sprintMultiplier : 1)
-    m.grounded = Math.abs(r.vy) < 1.8 || r.climbing || slideNow
+    m.grounded = Math.abs(s.vy) < 1.8 || r.climbing || slideNow
     m.climbing = alive && r.climbing
     m.climbPhase = onLadder ? r.pos.y / onLadder.rungs[1] : m.time * 2.2
     m.crouch = Boolean(r.crouch) && !proneNow

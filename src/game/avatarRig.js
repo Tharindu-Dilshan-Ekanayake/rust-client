@@ -467,6 +467,9 @@ export function animateRig(rig, motion) {
   } = motion
   const ratio = Math.min(speed / Math.max(maxSpeed, 0.001), 1)
   const armsFree = !ik
+  // Time since the last pose, for the walk cycle below (0 on the first call or after a pause).
+  const dt = rig.lastTime === undefined ? 0 : Math.min(0.1, Math.max(0, time - rig.lastTime))
+  rig.lastTime = time
 
   rig.root.position.y = rig.rootRestY
 
@@ -559,7 +562,11 @@ export function animateRig(rig, motion) {
     rig.root.position.y = rig.rootRestY + idle * 0.03
   } else {
     // Step frequency rises with speed so a sprint doesn't look like a moonwalk.
-    const phase = time * (5 + ratio * 5)
+    // The phase is integrated, not time x frequency: with that, every small
+    // change in speed (a real player's moves arrive with network jitter) threw
+    // the legs to a different point of the cycle, minutes' worth of steps at once.
+    rig.gaitPhase = ((rig.gaitPhase ?? 0) + dt * (5 + ratio * 5)) % (Math.PI * 2)
+    const phase = rig.gaitPhase
     const cycle = Math.sin(phase)
     const legAmp = (crouch ? 0.5 : 0.85) * ratio
     const armAmp = 0.7 * ratio
