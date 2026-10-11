@@ -12,8 +12,9 @@ import {
 /**
  * Final colour pass. The world (and the viewmodel) are rendered into an HDR
  * target; this pass tone-maps it (ACES, as three would), converts to sRGB, then
- * grades it like a war film: bleach-bypass contrast, pulled-back saturation,
- * teal-green shadows against dusty amber highlights, and a heavier vignette.
+ * grades it like a grim war film in a dust storm: bleach-bypass contrast,
+ * drained colour, sickly green shadows against burnt amber highlights, blacks
+ * lifted by the dust in the air, film grain and a heavy vignette.
  */
 
 const vertexShader = /* glsl */ `
@@ -34,7 +35,15 @@ const fragmentShader = /* glsl */ `
   uniform float vignette;
   uniform float bleach;
   uniform vec2 aspect;
+  uniform float grain;
+  uniform float time;
+  uniform vec3 dust;
+  uniform float lift;
   varying vec2 vUv;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+  }
 
   // three.js's ACES filmic (Stephen Hill's RRT+ODT fit), so the base look matches.
   vec3 RRTAndODTFit(vec3 v) {
@@ -75,29 +84,41 @@ const fragmentShader = /* glsl */ `
     // Saturation, then contrast around mid grey.
     c = mix(vec3(luma), c, saturation);
     c = (c - 0.5) * contrast + 0.5;
-    // Soft vignette (round, regardless of the window's shape).
+    // Dust in the air: nothing is ever quite black.
+    c = c * (1.0 - lift) + dust * lift;
+    // Soft vignette (round, regardless of the window's shape), browned at the edge.
     vec2 d = (vUv - 0.5) * aspect;
-    c *= 1.0 - vignette * smoothstep(0.25, 0.85, length(d));
+    float v = smoothstep(0.22, 0.85, length(d));
+    c *= 1.0 - vignette * v;
+    c = mix(c, c * vec3(0.92, 0.84, 0.72), v * 0.5);
+    // Film grain, stronger in the darks.
+    float n = hash(gl_FragCoord.xy + fract(time * 7.13) * 911.0) - 0.5;
+    c += n * grain * (1.15 - luma);
     gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
   }
 `
 
 export class ColorGrade {
-  constructor() {
-    this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 })
+  /** `samples`: MSAA on the HDR target (4 on High, 2 below: much cheaper on integrated GPUs). */
+  constructor({ samples = 4 } = {}) {
+    this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples })
     this.material = new ShaderMaterial({
       vertexShader,
       fragmentShader,
       uniforms: {
         tScene: { value: this.target.texture },
-        exposure: { value: 1.04 },
-        contrast: { value: 1.14 },
-        saturation: { value: 0.82 },
-        shadowTint: { value: [-0.02, 0.012, 0.022] },
-        highlightTint: { value: [0.03, 0.014, -0.028] },
-        vignette: { value: 0.34 },
-        bleach: { value: 0.3 },
+        exposure: { value: 1.02 },
+        contrast: { value: 1.15 },
+        saturation: { value: 0.66 },
+        shadowTint: { value: [-0.03, 0.016, 0.0] },
+        highlightTint: { value: [0.05, 0.018, -0.04] },
+        vignette: { value: 0.48 },
+        bleach: { value: 0.4 },
         aspect: { value: new Vector2(1, 1) },
+        grain: { value: 0.05 },
+        time: { value: 0 },
+        dust: { value: [0.42, 0.36, 0.28] },
+        lift: { value: 0.07 },
       },
       depthTest: false,
       depthWrite: false,
@@ -133,6 +154,7 @@ export class ColorGrade {
 
   /** Resolves the target onto the screen through the grade. */
   end(gl) {
+    this.material.uniforms.time.value = performance.now() / 1000
     gl.setRenderTarget(null)
     gl.clear()
     gl.render(this.scene, this.camera)

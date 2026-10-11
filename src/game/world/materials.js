@@ -1,6 +1,7 @@
 import { BoxGeometry, CylinderGeometry, DoubleSide, MeshStandardMaterial } from 'three'
 
 import {
+  blockTexture,
   brickTexture,
   burlapTexture,
   camoTexture,
@@ -8,6 +9,7 @@ import {
   concreteTexture,
   corrugatedTexture,
   graffitiTexture,
+  pipelineTexture,
   grateTexture,
   hazardStripeTexture,
   machineTexture,
@@ -83,8 +85,12 @@ export const materials = {
   concreteDark: () =>
     mat('concreteDark', () => new MeshStandardMaterial({ map: concreteTexture(), color: '#9a9184', roughness: 0.95 })),
   rust: () => mat('rust', () => new MeshStandardMaterial({ map: rustTexture(), roughness: 0.85, metalness: 0.35 })),
-  pipe: () =>
-    mat('pipe', () => new MeshStandardMaterial({ map: tankTexture(), color: '#a3876a', roughness: 0.8, metalness: 0.35 })),
+  pipe: () => mat('pipe', () => new MeshStandardMaterial({ map: pipelineTexture(), roughness: 0.82, metalness: 0.3 })),
+  /** Fire-gutted tanker shell: scorched black over the rusty paint. */
+  tankerBurnt: () =>
+    mat('tankerBurnt', () => new MeshStandardMaterial({ map: rustTexture(), color: '#86705e', roughness: 0.95, metalness: 0.2 })),
+  /** Glowing embers inside burning wrecks (Effects flickers its intensity). */
+  ember: () => mat('ember', () => new MeshStandardMaterial({ color: '#2a120a', emissive: '#ff5a14', emissiveIntensity: 2.2, roughness: 1 })),
   pipeInside: () =>
     mat('pipeInside', () => new MeshStandardMaterial({ color: '#2a1d16', roughness: 1, side: DoubleSide })),
   tower: () =>
@@ -93,6 +99,8 @@ export const materials = {
   corrugated: (color) =>
     mat(`corr:${color}`, () => new MeshStandardMaterial({ map: corrugatedTexture(), color, roughness: 0.75, metalness: 0.2 })),
   wood: () => mat('wood', () => new MeshStandardMaterial({ map: woodTexture(), roughness: 0.9 })),
+  /** Conveyor belt: worn grey rubber with a grip pattern (the grate texture). */
+  belt: () => mat('belt', () => new MeshStandardMaterial({ map: grateTexture(), color: '#8a8378', roughness: 0.92, metalness: 0.1 })),
   grate: () => mat('grate', () => new MeshStandardMaterial({ map: grateTexture(), roughness: 0.8, metalness: 0.5 })),
   machine: () =>
     mat('machine', () => new MeshStandardMaterial({ map: machineTexture(), roughness: 0.6, metalness: 0.45 })),
@@ -100,7 +108,7 @@ export const materials = {
   steelDark: () => mat('steelDark', () => new MeshStandardMaterial({ color: '#3b3732', roughness: 0.6, metalness: 0.7 })),
   steel: () => mat('steel', () => new MeshStandardMaterial({ color: '#7d776d', roughness: 0.5, metalness: 0.75 })),
   rubber: () => mat('rubber', () => new MeshStandardMaterial({ color: '#1d1b1a', roughness: 0.95 })),
-  burnt: () => mat('burnt', () => new MeshStandardMaterial({ map: rustTexture(), color: '#9a8a7c', roughness: 0.95, metalness: 0.25 })),
+  burnt: () => mat('burnt', () => new MeshStandardMaterial({ map: rustTexture(), color: '#b3a290', roughness: 0.95, metalness: 0.25 })),
   hazard: () => mat('hazard', () => new MeshStandardMaterial({ color: '#d6a51c', roughness: 0.6 })),
   ammoGreen: () => mat('ammoGreen', () => new MeshStandardMaterial({ color: '#4c5a33', roughness: 0.7, metalness: 0.3 })),
   barrel: (color) =>
@@ -125,10 +133,12 @@ export const materials = {
   light: () => mat('light', () => new MeshStandardMaterial({ color: '#ff4a2a', emissive: '#ff2a10', emissiveIntensity: 3 })),
   brick: () => mat('brick', () => new MeshStandardMaterial({ map: brickTexture(), roughness: 0.95 })),
   ruinPlaster: () =>
-    mat('ruinPlaster', () => new MeshStandardMaterial({ map: concreteTexture(), color: '#cdb995', roughness: 0.97 })),
+    mat('ruinPlaster', () => new MeshStandardMaterial({ map: concreteTexture(), color: '#c4b69c', roughness: 0.97 })),
+  /** Torn walls of the shelled buildings: grey-beige concrete block, not red brick. */
+  ruinBlock: () => mat('ruinBlock', () => new MeshStandardMaterial({ map: blockTexture(), color: '#d2c6b0', roughness: 0.97 })),
   slab: () => mat('slab', () => new MeshStandardMaterial({ map: concreteTexture(), color: '#a39b8c', roughness: 0.95 })),
   rock: () => mat('rock', () => new MeshStandardMaterial({ map: concreteTexture(), color: '#a88f6c', roughness: 1, flatShading: true })),
-  charred: () => mat('charred', () => new MeshStandardMaterial({ color: '#2a221c', roughness: 1 })),
+  charred: () => mat('charred', () => new MeshStandardMaterial({ color: '#3d322a', roughness: 1 })),
   wireLine: () => mat('wireLine', () => new MeshStandardMaterial({ color: '#2b2622', roughness: 0.8 })),
   camo: () =>
     mat('camo', () => new MeshStandardMaterial({ map: camoTexture(), alphaTest: 0.5, side: DoubleSide, roughness: 1 })),
@@ -154,6 +164,17 @@ export const materials = {
         roughness: 0.8,
       }),
     ),
+}
+
+const instancedCache = new Map()
+
+/**
+ * A copy of a material for instanced meshes. Sharing one material between
+ * instanced and plain meshes makes three.js swap shader programs on every draw.
+ */
+export function instancedVariant(material) {
+  if (!instancedCache.has(material)) instancedCache.set(material, material.clone())
+  return instancedCache.get(material)
 }
 
 export const CONTAINER_COLORS = {

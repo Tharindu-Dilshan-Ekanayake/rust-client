@@ -21,6 +21,8 @@ export function segmentTransform(a, b) {
  */
 export function useMerged(pieces) {
   return useMemo(() => {
+    // Nothing to merge (e.g. a pipe too short for joints).
+    if (!pieces.length) return null
     const m = new Matrix4()
     const q = new Quaternion()
     const s = new Vector3(1, 1, 1)

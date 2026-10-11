@@ -11,14 +11,34 @@ import { Box, Cyl } from './parts.jsx'
 
 const domeGeo = new SphereGeometry(1, 20, 12)
 
-export function DeckTank({ p, rotY, length, r }) {
+/** Deck rail runs: [side, fixed coordinate, from, to] along x (z sides) or z (x sides). */
+const RAIL_SIDES = [
+  ['z-', -1.15, -2.95, 2.95],
+  ['z+', 1.15, -2.95, 2.95],
+  ['x-', -2.95, -1.15, 1.15],
+  ['x+', 2.95, -1.15, 1.15],
+]
+
+export function DeckTank({ p, rotY, length, r, gap }) {
   const white = materials.tankWhite()
   const yellow = materials.hazard()
   const cy = 0.3 + r
   const body = length - r
+  // Inside the ladder's opening: no post, no rail.
+  const inGap = (side, t) => gap && gap.side === side && t > gap.from + 0.01 && t < gap.to - 0.01
   const posts = []
-  for (const x of [-2.95, -1.5, 0, 1.5, 2.95]) for (const z of [-1.15, 1.15]) posts.push([x, z])
-  for (const z of [-0.4, 0.4]) for (const x of [-2.95, 2.95]) posts.push([x, z])
+  for (const x of [-2.95, -1.5, 0, 1.5, 2.95]) for (const z of [-1.15, 1.15]) if (!inGap(z < 0 ? 'z-' : 'z+', x)) posts.push([x, z])
+  for (const z of [-0.4, 0.4]) for (const x of [-2.95, 2.95]) if (!inGap(x < 0 ? 'x-' : 'x+', z)) posts.push([x, z])
+  const rails = []
+  for (const [side, fixed, from, to] of RAIL_SIDES) {
+    const runs = gap?.side === side ? [[from, gap.from], [gap.to, to]] : [[from, to]]
+    for (const [a, b] of runs) {
+      if (b - a < 0.05) continue
+      const mid = (a + b) / 2
+      const alongX = side[0] === 'z'
+      rails.push({ size: alongX ? [b - a + 0.06, 0.05, 0.05] : [0.05, 0.05, b - a + 0.06], at: alongX ? [mid, fixed] : [fixed, mid] })
+    }
+  }
   return (
     <group position={p} rotation={[0, rotY, 0]}>
       {[-1, 1].map((s) => (
@@ -36,16 +56,9 @@ export function DeckTank({ p, rotY, length, r }) {
       {posts.map(([x, z], i) => (
         <Box key={i} size={[0.06, 1.05, 0.06]} position={[x, 0.52, z]} material={yellow} shadow={false} />
       ))}
-      {[0.55, 1.05].map((y) => (
-        <group key={y}>
-          {[-1.15, 1.15].map((z) => (
-            <Box key={z} size={[5.96, 0.05, 0.05]} position={[0, y, z]} material={yellow} shadow={false} />
-          ))}
-          {[-2.95, 2.95].map((x) => (
-            <Box key={x} size={[0.05, 0.05, 2.36]} position={[x, y, 0]} material={yellow} shadow={false} />
-          ))}
-        </group>
-      ))}
+      {[0.55, 1.05].map((y) =>
+        rails.map((rl, i) => <Box key={`${y}:${i}`} size={rl.size} position={[rl.at[0], y, rl.at[1]]} material={yellow} shadow={false} />),
+      )}
     </group>
   )
 }
@@ -187,8 +200,9 @@ function groundTexture() {
 }
 
 const PADS = [
-  { p: [0, 0, 0], size: [6.2, 6.2] },
-  { p: [16.6, 0, -19], size: [15, 8.4] },
+  // Under the derrick.
+  { p: [25, 0, -21], size: [6.2, 6.2] },
+  { p: [-22.6, 0, 25.5], size: [15, 8.4] },
   { p: [14.5, 0, 17], size: [3.4, 2.4] },
 ]
 

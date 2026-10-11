@@ -10,6 +10,8 @@ import { Effects } from './fx/Effects.jsx'
 import { AmmoPickups, GrenadeMeshes, SmokeClouds } from './fx/WorldState.jsx'
 import MenuCamera from './MenuCamera.jsx'
 import { installInput } from './player/input.js'
+import PerfDirector from './PerfDirector.jsx'
+import ClimbHands from './player/ClimbHands.jsx'
 import LocalPlayer from './player/LocalPlayer.jsx'
 import { RenderPipeline, ViewModel } from './player/ViewModel.jsx'
 import RemotePlayers from './remote/RemotePlayers.jsx'
@@ -92,7 +94,6 @@ function AdaptiveResolution() {
     setDpr(state.current.dpr)
   }, [min, max, setDpr])
   useFrame(() => {
-    if (!adaptive) return
     const s = state.current
     const now = performance.now()
     if (!s.start) s.start = now
@@ -102,6 +103,9 @@ function AdaptiveResolution() {
     s.frames = 0
     s.start = now
     runtime.view.fps = fps
+    // Nothing left to give by resolution: the quality watchdog may step in.
+    runtime.view.dprAtMin = !adaptive || s.dpr <= min * 0.75 + 0.01
+    if (!adaptive) return
     let next = s.dpr
     if (fps < 45) next = Math.max(min * 0.75, s.dpr - 0.25)
     else if (fps > 58) next = Math.min(Math.min(max, window.devicePixelRatio || 1), s.dpr + 0.125)
@@ -141,8 +145,11 @@ export function GameCanvas() {
       dpr={DPR[quality] ?? DPR.high}
       camera={{ fov: 75, near: 0.05, far: 600, position: [30, 14, 30] }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, scene }) => {
         gl.domElement.setAttribute('data-game', '')
+        // Tests read draw-call counts from it (?debug).
+        runtime.gl = gl
+        runtime.scene = scene
       }}
     >
       <Suspense fallback={null}>
@@ -150,6 +157,7 @@ export function GameCanvas() {
         <Physics>
           <DustlineMap />
           {inRoom && <LocalPlayer />}
+          {inRoom && <ClimbHands />}
         </Physics>
         {inRoom && (
           <>
@@ -165,6 +173,7 @@ export function GameCanvas() {
       <CameraDirector />
       <AudioListenerSync />
       <AdaptiveResolution />
+      <PerfDirector />
       <ViewModel />
       <RenderPipeline />
     </Canvas>

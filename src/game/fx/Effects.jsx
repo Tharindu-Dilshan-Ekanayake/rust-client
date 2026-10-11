@@ -18,7 +18,9 @@ import {
   Vector3,
 } from 'three'
 
+import { ENTITIES, yawOffset } from '../../shared/map.js'
 import { runtime } from '../runtime.js'
+import { materials } from '../world/materials.js'
 import { bulletHoleTexture, softDotTexture, smokeTexture } from '../world/textures.js'
 import { registerFx } from './fxApi.js'
 
@@ -53,6 +55,10 @@ const FRAG = /* glsl */ `
     gl_FragColor = vec4(vColor * t.rgb, t.a * vAlpha);
     if (gl_FragColor.a < 0.01) discard;
     #include <fog_fragment>
+    #if defined(ADDITIVE) && defined(USE_FOG)
+      // Light added through haze dims; it shouldn't turn the colour of the haze.
+      gl_FragColor.rgb = vColor * t.rgb * (1.0 - fogFactor);
+    #endif
   }
 `
 
@@ -86,6 +92,7 @@ class ParticlePool {
       transparent: true,
       depthWrite: false,
       fog: true,
+      defines: additive ? { ADDITIVE: '' } : {},
       blending: additive ? AdditiveBlending : NormalBlending,
     })
     this.material.uniforms.map.value = texture
@@ -150,23 +157,39 @@ function randomDir(spreadUp = 0) {
 }
 
 /**
- * Fires that never go out: the burnt-out APC smoulders in the yard, and big
- * black columns rise beyond the walls — the war going on around the map.
- * rate: particles/s; size: [start, end]; rise: m/s; life: s.
+ * Fires that never go out: the wrecks in the yard burn (flames, embers and a
+ * column of black smoke) or smoulder, and big black columns rise beyond the
+ * walls — the war going on around the map.
+ * rate: smoke particles/s; size: [start, end]; rise: m/s; life: s.
  */
+const WRECK_PLUMES = ENTITIES.filter((e) => e.fire || e.smoke).map((e) => {
+  const seat = e.fire ?? e.smoke
+  const o = yawOffset(e.p, seat[0], seat[2], e.rotY)
+  const p = [o[0], e.p[1] + seat[1], o[2]]
+  return e.fire
+    ? { p, rate: 6, size: [1.0, 6.5], rise: 1.9, life: 7.5, spread: 0.7, dark: 0.06, fire: true }
+    : { p, rate: 3, size: [0.6, 3.8], rise: 1.1, life: 5.5, spread: 0.4, dark: 0.2 }
+})
 const PLUMES = [
-  { p: [-5.3, 1.9, 11.3], rate: 7, size: [0.9, 5.5], rise: 1.6, life: 7, spread: 0.5, dark: 0.16, fire: true },
+  ...WRECK_PLUMES,
   { p: [-62, 4, -44], rate: 5, size: [6, 22], rise: 3.4, life: 14, spread: 3, dark: 0.12 },
   { p: [58, 4, 26], rate: 4, size: [5, 18], rise: 3, life: 13, spread: 2.5, dark: 0.14 },
   { p: [24, 4, -70], rate: 4, size: [7, 24], rise: 3.6, life: 15, spread: 3.5, dark: 0.11 },
   { p: [-40, 3, 64], rate: 3, size: [5, 16], rise: 2.6, life: 12, spread: 2.5, dark: 0.15 },
 ]
 /** Wind that bends the columns (matches the drifting sand). */
-const PLUME_WIND = [1.1, 0, 0.45]
+const PLUME_WIND = [2.0, 0, 0.88]
 
 const SAND = [0.82, 0.68, 0.5]
 const SMOKE_DARK = [0.35, 0.31, 0.27]
 const FIRE = [1.0, 0.62, 0.22]
+const FIRE_OUTER = [1.0, 0.42, 0.1]
+/** Over-bright on purpose: the HDR grade tone-maps it to a hot orange. */
+const FLAME_BODY = [2.2, 0.85, 0.2]
+const FIRE_CORE = [1.0, 0.7, 0.32]
+/** Flame licks per second per fire, and embers. */
+const FLAME_RATE = 32
+const EMBER_RATE = 3
 
 /* ---------------------------------------------------------------------------
  * Effects component: owns all pools and wires up `fx`
@@ -219,7 +242,7 @@ export function Effects() {
     for (const t of tracers) group.add(t.mesh)
     for (const d of decals) group.add(d)
     for (const l of lights) group.add(l.light)
-    return { dust, glow, plume, plumeAcc: PLUMES.map(() => Math.random()), tracers, decals, decalCursor: 0, lights, group }
+    return { dust, glow, plume, plumeAcc: PLUMES.map(() => Math.random()), fireAcc: PLUMES.map(() => Math.random()), emberAcc: PLUMES.map(() => Math.random()), tracers, decals, decalCursor: 0, lights, group }
   }, [])
 
   useEffect(() => {
@@ -418,18 +441,52 @@ export function Effects() {
           [PLUME_WIND[0] * (0.4 + Math.random() * 0.4) + j() * 0.2, pl.rise * (0.8 + Math.random() * 0.4), PLUME_WIND[2] * (0.4 + Math.random() * 0.4) + j() * 0.2],
           { life: pl.life * (0.8 + Math.random() * 0.4), size: pl.size[0], sizeEnd: pl.size[1], color: [shade, shade * 0.95, shade * 0.9], alpha: 0.75, gravity: -0.15, drag: 0.08 },
         )
-        if (pl.fire && Math.random() < 0.8) {
-          sys.glow.spawn([pl.p[0] + j() * 0.8, pl.p[1] - 0.3, pl.p[2] + j() * 0.8], [j() * 0.3, 1.2 + Math.random(), j() * 0.3], {
-            life: rand(0.35, 0.7),
-            size: rand(0.35, 0.7),
-            sizeEnd: 0.1,
-            color: FIRE,
-            alpha: 0.9,
-            gravity: -0.5,
+      }
+      if (!pl.fire) return
+      // Flames: tongues licking up from the seat, hot at the core, leaning downwind.
+      sys.fireAcc[i] += FLAME_RATE * step
+      while (sys.fireAcc[i] >= 1) {
+        sys.fireAcc[i] -= 1
+        const j = () => (Math.random() - 0.5) * pl.spread * 1.4
+        const core = Math.random() < 0.35
+        sys.glow.spawn([pl.p[0] + j(), pl.p[1] - 0.3 + Math.random() * 0.2, pl.p[2] + j()], [PLUME_WIND[0] * 0.3 + j() * 0.4, 1.9 + Math.random() * 1.6, PLUME_WIND[2] * 0.3 + j() * 0.4], {
+          life: rand(0.4, 0.8),
+          size: core ? rand(0.7, 1.1) : rand(1.1, 1.9),
+          sizeEnd: 0.15,
+          color: core ? FIRE_CORE : FIRE_OUTER,
+          alpha: core ? 0.6 : 0.42,
+          gravity: -0.6,
+        })
+        // A solid orange body under the glow, so the fire still reads against bright haze.
+        if (!core && Math.random() < 0.45) {
+          sys.plume.spawn([pl.p[0] + j() * 0.7, pl.p[1] - 0.2, pl.p[2] + j() * 0.7], [PLUME_WIND[0] * 0.3, 1.6 + Math.random(), PLUME_WIND[2] * 0.3], {
+            life: rand(0.35, 0.6),
+            size: rand(0.8, 1.3),
+            sizeEnd: 0.3,
+            color: FLAME_BODY,
+            alpha: 0.85,
+            gravity: -0.4,
+            drag: 0.2,
           })
         }
       }
+      // Embers: sparks carried up and away on the wind.
+      sys.emberAcc[i] += EMBER_RATE * step
+      while (sys.emberAcc[i] >= 1) {
+        sys.emberAcc[i] -= 1
+        sys.glow.spawn([pl.p[0], pl.p[1] + 0.3, pl.p[2]], [PLUME_WIND[0] * rand(0.6, 1.4), rand(1.8, 3.4), PLUME_WIND[2] * rand(0.6, 1.4) + rand(-0.6, 0.6)], {
+          life: rand(1.6, 3),
+          size: rand(0.06, 0.12),
+          sizeEnd: 0.03,
+          color: FIRE,
+          alpha: 1,
+          gravity: 0.3,
+        })
+      }
     })
+    // Embers inside the wrecks glow and flicker with the flames.
+    const t = performance.now() / 1000
+    materials.ember().emissiveIntensity = 1.7 + Math.sin(t * 11.3) * 0.35 + Math.sin(t * 23.1) * 0.25 + Math.random() * 0.3
     sys.plume.update(step)
     sys.glow.update(step)
 

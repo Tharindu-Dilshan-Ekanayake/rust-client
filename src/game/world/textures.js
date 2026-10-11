@@ -657,3 +657,145 @@ export const graffitiTexture = (i) =>
     ctx.globalCompositeOperation = 'source-over'
     return finish(c, { repeat: false })
   })
+
+/** The refinery's company plate: a red ring round an oil drop with a flame in it, on weathered enamel. */
+export const refinerySignTexture = () =>
+  cached('refinerySign', () => {
+    const rand = seededRandom(919)
+    const c = canvas(512)
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#e4dccb'
+    ctx.fillRect(0, 0, 512, 512)
+    // Grime and rust bleeding from the bolts.
+    for (let k = 0; k < 900; k++) {
+      ctx.fillStyle = `rgba(${90 + rand() * 60},${60 + rand() * 40},${30 + rand() * 20},${rand() * 0.12})`
+      ctx.fillRect(rand() * 512, rand() * 512, 2 + rand() * 10, 2 + rand() * 10)
+    }
+    for (const [x, y] of [[24, 24], [488, 24], [24, 488], [488, 488]]) {
+      const g = ctx.createLinearGradient(x, y, x, y + 120)
+      g.addColorStop(0, 'rgba(120,60,25,0.55)')
+      g.addColorStop(1, 'rgba(120,60,25,0)')
+      ctx.fillStyle = g
+      ctx.fillRect(x - 5, y, 10, 120)
+      ctx.fillStyle = '#5a4a3a'
+      ctx.beginPath()
+      ctx.arc(x, y, 7, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.lineWidth = 34
+    ctx.strokeStyle = '#a62b1f'
+    ctx.beginPath()
+    ctx.arc(256, 228, 150, 0, Math.PI * 2)
+    ctx.stroke()
+    // Oil drop with a flame cut into it.
+    ctx.fillStyle = '#b8321f'
+    ctx.beginPath()
+    ctx.moveTo(256, 108)
+    ctx.bezierCurveTo(300, 175, 345, 215, 345, 262)
+    ctx.arc(256, 262, 89, 0, Math.PI)
+    ctx.bezierCurveTo(167, 215, 212, 175, 256, 108)
+    ctx.fill()
+    ctx.fillStyle = '#efe6d4'
+    ctx.beginPath()
+    ctx.moveTo(256, 190)
+    ctx.bezierCurveTo(296, 240, 300, 300, 256, 318)
+    ctx.bezierCurveTo(222, 300, 220, 262, 240, 236)
+    ctx.bezierCurveTo(242, 262, 252, 270, 260, 262)
+    ctx.bezierCurveTo(270, 240, 262, 214, 256, 190)
+    ctx.fill()
+    ctx.fillStyle = '#7d2016'
+    ctx.font = 'bold 54px "Arial Black", Impact, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('DUSTLINE', 256, 438)
+    ctx.font = 'bold 26px Arial, sans-serif'
+    ctx.fillText('PETROLEUM CO.', 256, 476)
+    // Chipped enamel.
+    ctx.globalCompositeOperation = 'multiply'
+    for (let k = 0; k < 260; k++) {
+      ctx.fillStyle = `rgba(${110 + rand() * 40},${85 + rand() * 30},${60 + rand() * 20},0.8)`
+      ctx.beginPath()
+      ctx.arc(rand() * 512, rand() * 512, 1 + rand() * 4, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.globalCompositeOperation = 'source-over'
+    return finish(c, { repeat: false })
+  })
+
+/**
+ * Shelled concrete block for torn walls: big grey-beige blocks in a running
+ * bond, chipped corners, soot and dust, scraps of render still on them.
+ */
+export const blockTexture = () =>
+  cached('block', () => {
+    const rand = seededRandom(487)
+    const fbm = makeFbm(rand, 4, 4)
+    const patches = makeNoise(5, rand)
+    const grain = makeNoise(64, rand)
+    const blockH = 1 / 5
+    const blockW = 1 / 2.5
+    const c = paint(512, (u, v) => {
+      const row = Math.floor(v / blockH)
+      const off = row % 2 ? blockW / 2 : 0
+      const bu = ((u + off) % blockW) / blockW
+      const bv = (v % blockH) / blockH
+      const mortar = bu < 0.025 || bv < 0.05
+      const n = fbm(u, v)
+      const g = grain(u, v)
+      const tone = ((row * 5 + Math.floor((u + off) / blockW) * 11) % 7) / 7
+      // Chipped arrises: the block's edges go darker and ragged.
+      const edgeD = Math.min(bu, 1 - bu, bv * 0.45, (1 - bv) * 0.45)
+      const chip = edgeD < 0.03 + g * 0.03 ? 0.8 : 1
+      let col = mortar
+        ? mix([120, 112, 100], [96, 90, 80], n)
+        : mix(hex('#a39885'), hex('#bdb19b'), tone * 0.5 + n * 0.35 + g * 0.15).map((x) => x * chip)
+      // Pores in the block face.
+      if (!mortar && g > 0.86) col = col.map((x) => x * 0.82)
+      // Scraps of the old render.
+      const p = patches(u, v) + (n - 0.5) * 0.3 + (g - 0.5) * 0.1
+      if (p > 0.76) col = mix([200, 188, 162], [180, 168, 142], g)
+      else if (p > 0.745) col = mix(col, [70, 62, 52], 0.5)
+      col = mix(col, [190, 168, 132], 0.08)
+      col = mix(col, [40, 36, 32], Math.max(0, n - 0.64) * 1.7)
+      return col
+    })
+    return finish(c)
+  })
+
+/**
+ * Pipeline steel: faded sand-coloured paint over rusty steel. Rust bleeds from
+ * the longitudinal weld seam and in streaks round the pipe, paint flakes off in
+ * patches, and grime collects in bands (cylinder UVs: u round, v along).
+ */
+export const pipelineTexture = () =>
+  cached('pipeline', () => {
+    const rand = seededRandom(733)
+    const fbm = makeFbm(rand, 4, 5)
+    const flakes = makeFbm(rand, 8, 3)
+    const streak = makeNoise(40, rand)
+    const grain = makeNoise(96, rand)
+    const paintCol = hex('#a8987c')
+    const rustCol = hex('#6e3a1e')
+    const rustLight = hex('#9a5a2c')
+    const c = paint(512, (u, v) => {
+      const n = fbm(u, v)
+      const g = grain(u, v)
+      let col = mix(paintCol, [128, 118, 100], n * 0.6 + g * 0.2)
+      // Rust running round the pipe from the top (long streaks across u).
+      const s = streak(u * 0.15, v)
+      const run = Math.max(0, (s - 0.55) * 2.4) * (0.4 + 0.6 * n)
+      col = mix(col, mix(rustCol, rustLight, g), Math.min(1, run))
+      // Paint flaking off in patches down to bare rust.
+      const f = flakes(u, v)
+      if (f > 0.72) col = mix(rustCol, rustLight, g * 0.8)
+      else if (f > 0.695) col = mix(col, [60, 44, 32], 0.6)
+      // Weld seam along the pipe, with rust bleeding either side.
+      const seam = Math.abs(u - 0.5)
+      if (seam < 0.006) col = mix(col, [70, 52, 38], 0.8)
+      else if (seam < 0.04) col = mix(col, rustCol, (0.04 - seam) * 9 * (0.5 + n * 0.5))
+      // Grime band near each girth weld.
+      const girth = Math.abs(((v * 2) % 1) - 0.5)
+      if (girth > 0.49) col = mix(col, [74, 58, 44], 0.7)
+      return col
+    })
+    return finish(c)
+  })

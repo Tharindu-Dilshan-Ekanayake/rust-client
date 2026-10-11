@@ -29,6 +29,7 @@ const PRONE_HOLD = 0.32
 
 const _fwd = new Vector3()
 const _right = new Vector3()
+const _side = new Vector3()
 const _up = new Vector3()
 const _wish = new Vector3()
 
@@ -61,6 +62,9 @@ export function LocalPlayer() {
     vel: new Vector3(),
     grounded: true,
     climbing: false,
+    /** When the current climb started (hands come up onto the rungs), and the last rung pair heard. */
+    climbFrom: 0,
+    climbRung: 0,
     sprinting: false,
     sprintBlockUntil: 0,
     lunge: null,
@@ -327,10 +331,20 @@ export function LocalPlayer() {
 
     // --- Ladder ----------------------------------------------------------------------
     const ladder = ladderAt(l.feet.x, l.feet.y, l.feet.z)
-    if (!s.climbing && ladder && canAct && iz > 0) {
-      // Only grab on when looking at the ladder (toward the platform side).
-      const facing = _fwd.x * ladder.exitDir[0] + _fwd.z * ladder.exitDir[2]
-      if (facing > 0.3) s.climbing = true
+    // > 0 while looking at the ladder (into whatever it's fixed to).
+    const facing = ladder ? _fwd.x * ladder.exitDir[0] + _fwd.z * ladder.exitDir[2] : 0
+    const wasClimbing = s.climbing
+    if (!s.climbing && ladder && canAct) {
+      // From below: walk into it looking at it. From the top: just walk out over
+      // the edge onto it, whichever way you're facing.
+      const intoIt = iz > 0 && facing > 0.3
+      const wish = _wish.length()
+      const overTop = l.feet.y > ladder.topY - 0.4 && wish > 0 && -(_wish.x * ladder.exitDir[0] + _wish.z * ladder.exitDir[2]) > 0.3 * wish
+      if (intoIt || overTop) {
+        s.climbing = true
+        s.climbFrom = now
+        sfx.play('ladderRung', { volume: 0.5 })
+      }
     }
     if (s.climbing) {
       if (!ladder || (canAct && wasPressed('jump'))) {
@@ -339,7 +353,10 @@ export function LocalPlayer() {
         }
         s.climbing = false
       } else {
-        const climb = canAct ? (isDown('forward') ? 1 : 0) - (isDown('back') ? 1 : 0) : 0
+        // W climbs the way you're looking: up when facing the ladder, down when
+        // facing away from it (side-on, looking down means down).
+        const sense = facing > 0.25 ? 1 : facing < -0.25 ? -1 : l.pitch > -0.35 ? 1 : -1
+        const climb = canAct ? iz * sense : 0
         v.y = climb * PLAYER.climbSpeed
         v.x = (ladder.x - l.feet.x) * 8
         v.z = (ladder.z - l.feet.z) * 8
@@ -349,9 +366,17 @@ export function LocalPlayer() {
           v.z = ladder.exitDir[2] * 3
           v.y = 0.5
         }
-        if (climb < 0 && s.grounded && l.feet.y < 0.3) s.climbing = false
+        if (climb < 0 && s.grounded && l.feet.y < ladder.base + 0.3) s.climbing = false
+        // A hand (and boot) on steel every other rung.
+        const rung = Math.floor(l.feet.y / (ladder.rungs[1] * 2))
+        if (rung !== s.climbRung && climb !== 0) sfx.play('ladderRung', { volume: 0.32 + Math.random() * 0.1 })
+        s.climbRung = rung
       }
     }
+    // Off the ladder: the gun comes back up into the hands.
+    if (wasClimbing && !s.climbing) ws.raise(now)
+    l.ladder = s.climbing ? ladder : null
+    l.climbMount = s.climbing ? Math.min(1, (now - s.climbFrom) / 0.25) : 0
 
     // --- Gravity / jump -------------------------------------------------------------
     if (!s.climbing) {
@@ -401,6 +426,8 @@ export function LocalPlayer() {
     l.crouch = s.stance === 'crouch'
     l.prone = s.stance === 'prone'
     l.sliding = Boolean(s.slide)
+    // 1 at the start of a slide, bleeding to 0 as it slows (speed lines, FOV kick).
+    l.slideK = s.slide ? Math.max(0, 1 - (now - s.slide.start) / PLAYER.slideTime) : 0
     l.grounded = s.grounded
     l.climbing = s.climbing
     l.sprinting = s.sprinting
@@ -415,7 +442,9 @@ export function LocalPlayer() {
     const eyeTarget = EYE[s.stance] - (s.slide ? 0.14 : 0)
     // Going prone takes a moment; everything else snaps quickly.
     s.eye += (eyeTarget - s.eye) * Math.min(1, dt * (s.stance === 'prone' ? 6 : 12))
-    s.roll += ((s.slide ? 0.075 : 0) - s.roll) * Math.min(1, dt * 10)
+    // Hand over hand on a ladder: the body leans toward the hand reaching up.
+    const climbSway = l.ladder ? Math.sin((l.feet.y / l.ladder.rungs[1]) * Math.PI) : 0
+    s.roll += ((s.slide ? 0.075 : 0) + climbSway * 0.035 - s.roll) * Math.min(1, dt * 10)
     const hSpeed = Math.hypot(v.x, v.z)
     const ratio = s.grounded ? Math.min(1, hSpeed / (PLAYER.walkSpeed * PLAYER.sprintMultiplier)) : 0
     s.bobPhase += dt * (6 + ratio * 6) * (hSpeed > 0.5 ? 1 : 0)
@@ -442,6 +471,7 @@ export function LocalPlayer() {
     }
 
     camera.position.set(l.feet.x, l.feet.y + s.eye + bobY, l.feet.z).add(s.shakeOffset)
+    if (l.ladder) camera.position.addScaledVector(_side.set(l.ladder.side[0], 0, l.ladder.side[2]), climbSway * 0.035)
     camera.rotation.order = 'YXZ'
     camera.rotation.set(
       l.pitch + view.recoilPitch + swayY,
@@ -449,7 +479,7 @@ export function LocalPlayer() {
       (Math.random() - 0.5) * sh * 0.03 - s.roll,
     )
     const adsEase = ws.ads * ws.ads * (3 - 2 * ws.ads)
-    const fov = game.settings.fov + (adsFov - game.settings.fov) * adsEase + (s.sprinting ? 5 : 0)
+    const fov = game.settings.fov + (adsFov - game.settings.fov) * adsEase + (s.sprinting ? 5 : 0) + 9 * (l.slideK ?? 0) * (1 - adsEase)
     if (Math.abs(camera.fov - fov) > 0.01) {
       camera.fov += (fov - camera.fov) * Math.min(1, dt * 18)
       camera.updateProjectionMatrix()
@@ -460,7 +490,7 @@ export function LocalPlayer() {
     camera.getWorldDirection(_fwd)
     _right.set(1, 0, 0).applyQuaternion(camera.quaternion)
     _up.set(0, 1, 0).applyQuaternion(camera.quaternion)
-    const reach = w.id === 'sniper' ? 1.0 : w.kind === 'Pistol' || w.id === 'hornet' ? 0.45 : 0.75
+    const reach = { sniper: 1.0, lmg: 0.85, shotgun: 0.85, smg: 0.6, rpg: 0.6, hornet: 0.45 }[w.id] ?? (w.kind === 'Pistol' ? 0.45 : 0.75)
     l.muzzle
       .copy(camera.position)
       .addScaledVector(_fwd, reach)
@@ -482,7 +512,13 @@ export function LocalPlayer() {
       if (s.stepTimer <= 0) {
         s.stepTimer = s.sprinting ? 0.28 : 0.38
         // Sand on the ground; anything raised (catwalks, containers, stairs) rings.
-        sfx.play('footstep', { volume: s.sprinting ? 0.32 : 0.24, surface: l.feet.y > 0.3 ? 'metal' : 'sand' })
+        // Left and right feet land a touch differently.
+        s.stepLeft = !s.stepLeft
+        sfx.play('footstep', {
+          volume: (s.sprinting ? 0.34 : 0.26) * (s.stepLeft ? 1 : 0.88),
+          rate: s.stepLeft ? 1 : 0.95,
+          surface: l.feet.y > 0.3 ? 'metal' : 'sand',
+        })
       }
     }
 

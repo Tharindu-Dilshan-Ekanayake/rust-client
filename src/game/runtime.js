@@ -23,6 +23,12 @@ export const runtime = {
     grounded: true,
     climbing: false,
     sprinting: false,
+    sliding: false,
+    /** The ladder being climbed (shared/map.js LADDERS entry) or null, and 0..1 hands onto it. */
+    ladder: null,
+    climbMount: 0,
+    /** 0..1 slide intensity (1 at the start of a slide). */
+    slideK: 0,
     alive: false,
     seq: 0,
     /** 0 = hip, 1 = fully aimed down sights. */

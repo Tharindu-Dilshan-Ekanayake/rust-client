@@ -10,6 +10,8 @@ import { rotate3 } from '../shared/math.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { useGameStore } from '../store/gameStore.js'
 import { Button, Icon } from './common.jsx'
+import { PromotionBanner, XpBar, XpFeed } from './Progression.jsx'
+import { RankInsignia } from './RankInsignia.jsx'
 import { fmtTime, useAnimationFrame } from './uiUtils.js'
 
 const teamColor = (team, mode, isMe) =>
@@ -88,6 +90,18 @@ function AmmoBox() {
  * Top-centre: timer + score
  * ------------------------------------------------------------------------- */
 
+/** The match clock: centred, fixed-width digits; turns red and pulses in the last 30 s. */
+function Clock({ room }) {
+  const warmup = room.phase === 'warmup'
+  const low = !warmup && room.timeLeft <= 30
+  return (
+    <div className={`cell clock ${low ? 'low' : ''}`}>
+      <span className="timer">{warmup ? 'WARM-UP' : fmtTime(room.timeLeft)}</span>
+      <span className="sub">{warmup ? 'Host starts it from Esc' : `First to ${room.scoreLimit}`}</span>
+    </div>
+  )
+}
+
 function TopBar() {
   const room = useGameStore((s) => s.room)
   const mode = useGameStore((s) => s.mode)
@@ -95,32 +109,32 @@ function TopBar() {
   const myId = useGameStore((s) => s.myId)
   if (mode === 'tdm') {
     const cells = [
-      [TEAMS.ALPHA, room.scoreAlpha],
-      [TEAMS.BRAVO, room.scoreBravo],
+      [TEAMS.ALPHA, room.scoreAlpha, 'left'],
+      [TEAMS.BRAVO, room.scoreBravo, 'right'],
     ]
-    const cell = ([t, score]) => (
-      <div className="cell" key={t} style={{ borderBottom: t === team ? `2px solid ${teamColor(t, mode)}` : '2px solid transparent' }}>
-        <span className="dl-label" style={{ color: teamColor(t, mode), fontSize: 11 }}>
-          {TEAM_LABELS[t]}
-          {t === team ? ' · YOU' : ''}
-        </span>
-        <span className="score" style={{ color: teamColor(t, mode) }}>
-          {score}
-        </span>
-        <div className="bar">
-          <div style={{ width: `${(score / Math.max(1, room.scoreLimit)) * 100}%`, background: teamColor(t, mode) }} />
+    const leading = room.scoreAlpha === room.scoreBravo ? '' : room.scoreAlpha > room.scoreBravo ? TEAMS.ALPHA : TEAMS.BRAVO
+    const cell = ([t, score, side]) => {
+      const color = teamColor(t, mode)
+      return (
+        <div className={`cell team ${side} ${t === team ? 'mine' : ''}`} key={t} style={{ '--team': color }}>
+          <span className="name">
+            {TEAM_LABELS[t]}
+            {t === team ? <em> · YOU</em> : null}
+          </span>
+          <span className="score">
+            {score}
+            {leading === t && <i className="lead" />}
+          </span>
+          <div className="bar">
+            <div style={{ width: `${Math.min(100, (score / Math.max(1, room.scoreLimit)) * 100)}%` }} />
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
     return (
       <div className="dl-top">
         {cell(cells[0])}
-        <div className="cell">
-          <span className="timer">{room.phase === 'warmup' ? 'WARM-UP' : fmtTime(room.timeLeft)}</span>
-          <span className="dl-label" style={{ fontSize: 10 }}>
-            {room.phase === 'warmup' ? 'Host starts it from Esc' : `First to ${room.scoreLimit}`}
-          </span>
-        </div>
+        <Clock room={room} />
         {cell(cells[1])}
       </div>
     )
@@ -129,12 +143,7 @@ function TopBar() {
   const myRank = ranked.findIndex((p) => p.id === myId)
   return (
     <div className="dl-top">
-      <div className="cell">
-        <span className="timer">{room.phase === 'warmup' ? 'WARM-UP' : fmtTime(room.timeLeft)}</span>
-        <span className="dl-label" style={{ fontSize: 10 }}>
-          {room.phase === 'warmup' ? 'Host starts it from Esc' : `First to ${room.scoreLimit}`}
-        </span>
-      </div>
+      <Clock room={room} />
       <div className="cell dl-ffa-top">
         {ranked.slice(0, 3).map((p, i) => (
           <div key={p.id} className={`r ${p.id === myId ? 'me' : ''}`}>
@@ -442,8 +451,11 @@ export function ScoreTable({ highlightMvp = false }) {
   const row = (p) => (
     <tr key={p.id} className={`${p.id === myId ? 'me' : ''} ${p.state === 'dead' ? 'dead' : ''}`}>
       <td style={{ color: teamColor(p.team, mode, p.id === myId) }}>
-        {highlightMvp && p.id === room.mvp ? '★ ' : ''}
-        {p.name}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, verticalAlign: 'middle' }}>
+          <RankInsignia rank={p.rank} size={18} />
+          {highlightMvp && p.id === room.mvp ? '★ ' : ''}
+          {p.name}
+        </span>
       </td>
       <td>{p.kills}</td>
       <td>{p.deaths}</td>
@@ -541,6 +553,95 @@ function LowHealthAudio() {
   return null
 }
 
+/**
+ * Slide speed lines: thin streaks racing out from the middle of the screen to
+ * the edges, mostly sideways, strongest as the slide kicks off.
+ */
+const STREAKS = 70
+
+function spawnStreak(s, fresh) {
+  // Mostly toward the left and right edges, a few up and down.
+  const side = Math.random() < 0.5 ? 0 : Math.PI
+  s.angle = Math.random() < 0.8 ? side + (Math.random() - 0.5) * 1.5 : Math.random() * Math.PI * 2
+  s.r = fresh ? 0.3 + Math.random() * 0.7 : 0.32 + Math.random() * 0.25
+  s.speed = 1.6 + Math.random() * 2.2
+  s.len = 0.12 + Math.random() * 0.22
+  s.width = 0.6 + Math.random() * 1.6
+  s.alpha = 0.25 + Math.random() * 0.5
+}
+
+function SpeedLines() {
+  const ref = useRef(null)
+  const state = useRef({ last: 0, k: 0, drawn: false, streaks: [] })
+  useAnimationFrame((t) => {
+    const canvas = ref.current
+    const st = state.current
+    const dt = Math.min(0.05, st.last ? (t - st.last) / 1000 : 0)
+    st.last = t
+    if (!canvas) return
+    const want = runtime.local.alive ? (runtime.local.slideK ?? 0) : 0
+    // Quick in, softer out.
+    st.k += (want - st.k) * Math.min(1, dt * (want > st.k ? 20 : 6))
+    const ctx = canvas.getContext('2d')
+    if (st.k < 0.02) {
+      if (st.drawn) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        st.drawn = false
+      }
+      return
+    }
+    const w = window.innerWidth
+    const h = window.innerHeight
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w
+      canvas.height = h
+    }
+    if (!st.streaks.length) {
+      st.streaks = Array.from({ length: STREAKS }, () => {
+        const s = {}
+        spawnStreak(s, true)
+        return s
+      })
+    }
+    ctx.clearRect(0, 0, w, h)
+    const cx = w / 2
+    const cy = h / 2
+    const reach = Math.hypot(cx, cy)
+    // A touch of edge darkening sells the speed and lifts the streaks off bright walls.
+    const vig = ctx.createRadialGradient(cx, cy, reach * 0.45, cx, cy, reach)
+    vig.addColorStop(0, 'rgba(10,8,6,0)')
+    vig.addColorStop(1, `rgba(10,8,6,${(0.28 * st.k).toFixed(3)})`)
+    ctx.fillStyle = vig
+    ctx.fillRect(0, 0, w, h)
+    ctx.lineCap = 'round'
+    for (const s of st.streaks) {
+      s.r += s.speed * dt * (0.6 + st.k)
+      if (s.r > 1.05) spawnStreak(s, false)
+      const r0 = s.r * reach
+      const r1 = Math.min(1.1, s.r + s.len) * reach
+      const dx = Math.cos(s.angle)
+      const dy = Math.sin(s.angle)
+      const g = ctx.createLinearGradient(cx + dx * r0, cy + dy * r0, cx + dx * r1, cy + dy * r1)
+      // Fades in from the middle so the centre of the view stays clear.
+      const a = s.alpha * st.k * Math.min(1, (s.r - 0.3) * 4)
+      g.addColorStop(0, 'rgba(255,248,235,0)')
+      g.addColorStop(1, `rgba(255,248,235,${a.toFixed(3)})`)
+      ctx.beginPath()
+      ctx.moveTo(cx + dx * r0, cy + dy * r0)
+      ctx.lineTo(cx + dx * r1, cy + dy * r1)
+      // Faint dark edge under each streak, then the bright core.
+      ctx.strokeStyle = `rgba(20,16,12,${(a * 0.35).toFixed(3)})`
+      ctx.lineWidth = s.width * (0.7 + s.r) + 2
+      ctx.stroke()
+      ctx.strokeStyle = g
+      ctx.lineWidth = s.width * (0.7 + s.r)
+      ctx.stroke()
+    }
+    st.drawn = true
+  })
+  return <canvas ref={ref} className="dl-speedlines" />
+}
+
 function ResumePrompt() {
   const locked = useGameStore((s) => s.pointerLocked)
   const overlay = useGameStore((s) => s.overlay)
@@ -580,6 +681,7 @@ export function HUD() {
       {alive && (
         <>
           <LowHealthAudio />
+          <SpeedLines />
           <Crosshair />
           <Hitmarker />
           <DamageMarks />
@@ -590,6 +692,9 @@ export function HUD() {
       )}
       {showMinimap && <Minimap />}
       <TopBar />
+      <XpFeed />
+      <PromotionBanner />
+      {alive && <XpBar />}
       <KillFeed />
       <Notices />
       <Scoreboard />

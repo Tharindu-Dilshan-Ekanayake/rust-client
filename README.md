@@ -3,16 +3,47 @@
 Browser FPS built with React Three Fiber + Rapier, played with your **Bloxity**
 avatar. Up to 8 players per lobby, Team Deathmatch or Free-for-all, on
 *Dustline Pumpstation* — a 60 × 60 m oil yard in a hazy desert, styled after
-MW's Rust: a central derrick tower (one exposed ladder to the lookout deck),
-tall concrete T-walls with rusty mesh and razor wire, an elevated pipeline you
-can walk under, container stacks with graffiti and deck tanks, war-damaged ruins,
-and a rail spur, storage tanks and hills out past the wall.
+MW's Rust. In the middle stands the refinery: a corrugated pump hall with an
+open bay, a deck over them reached by a conveyor ramp, a clad process tower with
+the company plate and a burning flare stack, and a raised tank platform. The
+derrick tower (one exposed ladder to its lookout deck) stands in the north-east
+corner by the pipeline, which runs along the north wall with a lane underneath; its
+torn west end has dropped into the sand and makes a ramp up onto the pipe.
+The tank yard (stairs and a catwalk over the tank tops) holds the opposite,
+south-west corner, so both high points are neutral corners the same distance
+from each spawn. Round them: tall concrete T-walls with rusty mesh and razor wire, container stacks with graffiti and
+deck tanks, shelled two-storey block buildings with sand banked against them,
+and burnt-out vehicles (a fuel tanker, an APC, trucks) still burning, with black
+smoke leaning downwind. The refinery deck can be reached three ways: the
+conveyor (west), the south stairs and the bay ladder (east). A dust storm blows
+through the whole match: debris whipping past, sand sheets low over the ground,
+and gusts that close the haze in. Out past the wall: a rail spur, storage tanks
+and hills.
 
-Classes pick a primary (VX-7 AR / Longhaul .50), a secondary (Kestrel P9,
-Viper .45 revolver or Hornet machine pistol) and a tactical, and each gun takes
-attachments: optics (red dot, holo), muzzle (suppressor, compensator) and
-extended mags. Aiming lines up whatever optic is fitted with the centre of the
-screen; suppressed shots are quiet and never show on enemy minimaps.
+Classes pick a primary (VX-7 AR, VK-9 Vandal SMG, Breacher 12 pump shotgun,
+Longhaul .50 sniper, Bulldog LMG), a secondary (Kestrel P9, Viper .45 revolver,
+Hornet machine pistol or the Warhead RL rocket launcher) and a tactical, and each
+gun takes attachments: optics (red dot, holo), muzzle (suppressor, compensator)
+and extended mags. Aiming lines up whatever optic is fitted with the centre of
+the screen; suppressed shots are quiet and never show on enemy minimaps.
+
+## Ranks
+
+Every gun is open to everyone from the start. Kills, headshots, knife kills,
+long shots, revenge, time played and finishing / winning matches earn XP
+(`+100 KILL` pops up by the crosshair, with a rank strip along the bottom of
+the HUD). XP climbs the army ranks, Private → Sergeant → … → Captain → General
+(16 in all), with a promotion banner and insignia on the menu, scoreboards and
+end screen. XP lives in this browser (`localStorage`), see
+`shared/progression.js`.
+
+## Ladders
+
+The derrick tower, both container stacks with deck tanks and the refinery
+(ground → deck → tank platform → process tower roof) have ladders. Walk into
+one looking at it and hold W to climb; at the top you step off onto the deck. To get down, walk off the top onto the ladder (W goes down while you face
+away from it, S while you face it), or press Space to jump off. Your hands work
+hand over hand up the rungs, and others see you face the ladder and climb it.
 
 ```bash
 npm install
@@ -34,7 +65,7 @@ out of the box. See `.env.example` (also `VITE_GAME_SLUG` for Bloxity login).
 | Ctrl | Prone / stand (mid-match the browser asks before Ctrl+W closes the tab) |
 | R | Reload |
 | 1 / 2 / 3, mouse wheel | Primary / secondary / knife |
-| V | Quick melee (lunges at close targets) |
+| V | Quick knife: whips the knife out for a slash with any weapon (lunges at close targets) |
 | G (hold) | Cook + throw frag |
 | Q | Flashbang or smoke |
 | B | Change class (applies next spawn) |
@@ -94,6 +125,23 @@ few hundred batches at load (`world/StaticBatcher.jsx`); Settings → Graphics
 quality picks shadow-map size, dust and render scale, and *Auto resolution*
 lowers the render scale when the frame rate drops below ~45 FPS.
 
+## Performance
+
+Built to run smoothly on low-end PCs without hitches:
+
+- **Auto quality** (Settings, on by default) picks Low / Medium / High from the
+  GPU and CPU on first run, and drops a level if the frame rate stays under ~40
+  even at the lowest render scale. *Auto resolution* trims the render scale first.
+- **Low**: no sun shadows, no colour grade, fewer dust particles. **Medium**:
+  shadows redrawn every other frame, 2x MSAA on the grade. **High**: everything.
+- The map is merged into a few hundred static batches whose matrices are frozen,
+  and every solid shadow caster is merged again into one depth-only proxy per
+  32 m cell, so the shadow pass is a handful of draw calls.
+- Shaders are compiled and textures uploaded ahead of time (menus, joining,
+  quality changes), including the weapons for both the world and the viewmodel,
+  so the first spawn, shot or grenade doesn't freeze the game.
+- The sound bank is synthesised in a Web Worker, off the main thread.
+
 ## Dev tools
 
 - `/?preview=map` — orbit the map; pin a view with `&cam=x,y,z&look=x,y,z`.
@@ -102,4 +150,5 @@ lowers the render scale when the frame rate drops below ~45 FPS.
 - `/?preview=avatars` — every remote-player pose side by side (`&view=side`),
   `&probe` for raw rig-axis tests.
 - `/?debug` — exposes `window.__dl`; `__dl.sandbox([x, y, z], yaw, cls?)` spawns
-  you offline (no server) to test movement or a class's viewmodel.
+  you offline (no server) to test movement or a class's viewmodel;
+  `__dl.grantXp(n)` adds XP (rank-ups, promotion banner).
