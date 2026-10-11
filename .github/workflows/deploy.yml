@@ -1,0 +1,56 @@
+# Builds the client and uploads it to Bloxity's static hosting.
+#   dev branch -> https://modern-guns.dev.play.bloxity.io (talks to the dev backend)
+#   main       -> https://modern-guns.play.bloxity.io     (talks to prod)
+#
+# One secret: LEGION_DEPLOY_TOKEN (My Games -> modern-guns -> eye icon), the
+# same token the server repo uses.
+name: Deploy client
+
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-client-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  GAME_ID: modern-guns
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The shared gameplay code is the committed src/shared copy here (the
+      # server repo isn't checked out next to this one).
+      - name: Build
+        run: npm run build
+        env:
+          VITE_USE_MATCHMAKER: '1'
+
+      - name: Zip
+        run: cd dist && zip -qr ../build.zip .
+
+      - name: Upload to Bloxity
+        env:
+          LEGION_DEPLOY_TOKEN: ${{ secrets.LEGION_DEPLOY_TOKEN }}
+        run: |
+          if [ "$GITHUB_REF_NAME" = "main" ]; then channel=prod; else channel=dev; fi
+          curl -sS --fail-with-body -X POST \
+            "https://api.bloxity.io/v1/hosting/games/$GAME_ID/frontend?channel=$channel&version=$GITHUB_SHA" \
+            -H "Authorization: Bearer $LEGION_DEPLOY_TOKEN" \
+            -H 'Content-Type: application/zip' \
+            --data-binary @build.zip

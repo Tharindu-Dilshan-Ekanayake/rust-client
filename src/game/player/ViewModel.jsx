@@ -299,13 +299,36 @@ function updateTrail(vm, model, active) {
 
 const _shellPos = new Vector3()
 
+/**
+ * The viewmodel draws its own copies of the gun, arm and casing materials. A
+ * material drawn in two scenes with different lights (the world, and the
+ * viewmodel's studio rig) has its shader looked up again every time it changes
+ * scene: every frame, for every part of a gun someone in view is also carrying.
+ */
+const vmMaterials = new Map()
+function vmMaterial(material) {
+  let own = vmMaterials.get(material)
+  if (!own) {
+    own = material.clone()
+    vmMaterials.set(material, own)
+    vmMaterials.set(own, own)
+  }
+  return own
+}
+function ownMaterials(root) {
+  root.traverse((o) => {
+    if (o.material && !Array.isArray(o.material)) o.material = vmMaterial(o.material)
+  })
+  return root
+}
+
 /** Throws a casing out of the gun's `eject` marker, in camera space. */
 function ejectShell(vm, eject, kind) {
   const s = vm.shells[vm.nextShell++ % vm.shells.length]
   eject.getWorldPosition(_shellPos)
   vm.camera.worldToLocal(_shellPos)
   s.mesh.geometry = vm.shellGeos[kind]
-  s.mesh.material = kind === 'shotgun' ? weaponMaterials.red : kind === 'pin' ? weaponMaterials.steel : weaponMaterials.brass
+  s.mesh.material = vmMaterial(kind === 'shotgun' ? weaponMaterials.red : kind === 'pin' ? weaponMaterials.steel : weaponMaterials.brass)
   s.mesh.position.copy(_shellPos)
   s.mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0)
   const up = kind === 'pistol' ? 1.35 : kind === 'shotgun' ? 0.8 : 1
@@ -333,7 +356,7 @@ function updateShells(vm, dt) {
 
 /** Builds a viewmodel weapon and works out where it sits when aimed. */
 function buildModel(id, att, rig) {
-  const model = createWeaponModel(id, att)
+  const model = ownMaterials(createWeaponModel(id, att))
   model.visible = false
   // The knife reads better a size up in first person.
   if (id === 'knife') model.scale.setScalar(KNIFE_VIEW_SCALE)
@@ -386,7 +409,7 @@ export function ViewModel() {
       pin: new TorusGeometry(0.011, 0.0022, 6, 14),
     }
     const shells = Array.from({ length: 14 }, () => {
-      const mesh = new Mesh(shellGeos.rifle, weaponMaterials.brass)
+      const mesh = new Mesh(shellGeos.rifle, vmMaterial(weaponMaterials.brass))
       mesh.visible = false
       camera.add(mesh)
       return { mesh, vel: new Vector3(), spin: new Vector3(), life: 0 }
@@ -397,8 +420,8 @@ export function ViewModel() {
     camera.add(rig)
     // Built lazily per weapon + attachment combo; geometry is shared, so these are cheap.
     const models = new Map()
-    const armR = makeArm(1)
-    const armL = makeArm(-1)
+    const armR = ownMaterials(makeArm(1))
+    const armL = ownMaterials(makeArm(-1))
     camera.add(armR, armL)
     // A shotgun shell pinched in the off hand's fingers while reloading.
     const handShell = new Group()
@@ -406,10 +429,11 @@ export function ViewModel() {
     const shellBase = new Mesh(new CylinderGeometry(0.0098, 0.0098, 0.012, 12).rotateX(Math.PI / 2), weaponMaterials.brass)
     shellBase.position.z = 0.028
     handShell.add(shellBase)
+    ownMaterials(handShell)
     handShell.position.set(0, 0.004, -0.07)
     handShell.visible = false
     armL.add(handShell)
-    const grenades = { frag: createWeaponModel('frag'), flash: createWeaponModel('flash'), smoke: createWeaponModel('smoke') }
+    const grenades = { frag: ownMaterials(createWeaponModel('frag')), flash: ownMaterials(createWeaponModel('flash')), smoke: ownMaterials(createWeaponModel('smoke')) }
     for (const g of Object.values(grenades)) {
       g.visible = false
       armL.add(g)

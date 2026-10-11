@@ -40,6 +40,11 @@ export function Connecting() {
           {failed ? 'Connection failed' : 'Connecting…'}
         </div>
         <div className="dl-label">{MODE_LABELS[mode]}</div>
+        {!failed && connection.note && (
+          <div className="dl-muted" style={{ fontSize: 13 }}>
+            {connection.note}
+          </div>
+        )}
         {failed && (
           <>
             <div className="dl-muted" style={{ maxWidth: 460, fontSize: 13 }}>

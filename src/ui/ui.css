@@ -1,5 +1,5 @@
 /*
- * Dustline UI — tactical military theme.
+ * Modern Guns UI — tactical military theme.
  * Dark panels, sand/orange accent, sharp corners, thin accent borders, scanlines.
  */
 
@@ -1129,9 +1129,10 @@
   height: 14px;
 }
 
+/* Top-left, below the corner the Bloxity portal keeps for its logo when hosted. */
 .dl-minimap {
   position: absolute;
-  top: 18px;
+  top: 88px;
   left: 22px;
   width: 168px;
   height: 168px;

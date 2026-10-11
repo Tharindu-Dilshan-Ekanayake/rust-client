@@ -3,8 +3,10 @@ import { createContext, useContext } from 'react'
 export const BloxityContext = createContext(null)
 
 /**
- * Access the Bloxity session: `user`, `guest`, `isLoggedIn`, `login`, `logout`,
- * `avatar` (equipped IDs), `proportions`, and the `game` loading helpers.
+ * Access the Bloxity session: `user` (the portal's signed-in account) or `guest`,
+ * `isLoggedIn`, `identity` (whichever of the two), `avatar` (equipped IDs),
+ * `proportions`, and the `game` loading helpers. There is no login or logout:
+ * the player arrives signed in from the portal, or as a guest.
  *
  * Must be called inside a `<BloxityProvider>`.
  */
