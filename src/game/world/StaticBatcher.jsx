@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef } from 'react'
 import { BufferAttribute, DoubleSide, FrontSide, Matrix4, Mesh, MeshBasicMaterial, Vector3 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
+import { SHADOW_ONLY_LAYER } from '../layers.js'
+
 const KEEP = ['position', 'normal', 'uv']
 const _centre = new Vector3()
 
@@ -23,6 +25,63 @@ function positionsOnly(geo) {
   return geo
 }
 
+/**
+ * A key for everything about a material except its colour: materials with the
+ * same key draw identically apart from the tint, so their meshes can share one
+ * batch with the tint moved into vertex colours (diffuse = colour x vertex
+ * colour, both linear, so the result is exactly the same). Anything this can't
+ * describe (custom shader hooks, vertex colours of its own) keys on its uuid.
+ */
+function tintlessKey(mat) {
+  if (mat.vertexColors) return mat.uuid
+  let key = mat.type
+  for (const k of Object.keys(mat).sort()) {
+    if (k === 'uuid' || k === 'name' || k === 'id' || k === 'version' || k === 'userData' || k === 'color' || k === '_listeners') continue
+    const v = mat[k]
+    let s
+    if (typeof v === 'function') return mat.uuid
+    if (v === null || v === undefined) s = ''
+    else if (typeof v !== 'object') s = String(v)
+    else if (v.isTexture) s = v.uuid
+    else if (v.isColor) s = `${v.r},${v.g},${v.b}`
+    else if (v.isVector2 || v.isVector3 || v.isEuler) s = v.toArray().join(',')
+    else {
+      try {
+        s = JSON.stringify(v)
+      } catch {
+        return mat.uuid
+      }
+    }
+    key += `|${k}=${s}`
+  }
+  return key
+}
+
+/** One white, vertex-coloured copy per tintless key (see tintlessKey). */
+const tinted = new Map()
+function tintedMaterial(key, mat) {
+  if (!tinted.has(key)) {
+    const m = mat.clone()
+    m.color.setRGB(1, 1, 1)
+    m.vertexColors = true
+    tinted.set(key, m)
+  }
+  return tinted.get(key)
+}
+
+/** Bakes a material colour into a geometry's vertex colours. */
+function addTint(geo, color) {
+  const n = geo.getAttribute('position').count
+  const a = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) {
+    a[i * 3] = color.r
+    a[i * 3 + 1] = color.g
+    a[i * 3 + 2] = color.b
+  }
+  geo.setAttribute('color', new BufferAttribute(a, 3))
+  return geo
+}
+
 function mergeAll(geos) {
   // mergeGeometries needs all-indexed or all-not.
   if (geos.some((g) => !g.index) && geos.some((g) => g.index)) {
@@ -41,23 +100,15 @@ function mergeAll(geos) {
 const proxyMaterials = { [FrontSide]: new MeshBasicMaterial({ side: FrontSide }), [DoubleSide]: new MeshBasicMaterial({ side: DoubleSide }) }
 
 /**
- * A mesh that only exists in the sun's shadow map: in the main pass its draw
- * range is emptied just before drawing (onBeforeRender runs there, not in the
- * shadow pass) and restored after.
+ * A mesh that only exists in the sun's shadow map: it lives on the shadow-only
+ * layer, which the sun's shadow camera sees and the view camera skips outright.
  */
 function shadowProxy(geometry, side) {
   const mesh = new Mesh(geometry, proxyMaterials[side])
   mesh.castShadow = true
   mesh.receiveShadow = false
   mesh.matrixAutoUpdate = false
-  let count = 0
-  mesh.onBeforeRender = () => {
-    count = geometry.drawRange.count
-    geometry.drawRange.count = 0
-  }
-  mesh.onAfterRender = () => {
-    geometry.drawRange.count = count
-  }
+  mesh.layers.set(SHADOW_ONLY_LAYER)
   return mesh
 }
 
@@ -102,7 +153,9 @@ function freezeStatic(obj, log) {
  * Merges every static mesh under it into one mesh per (material, shadow flags,
  * spatial cell). The map is hundreds of small boxes sharing a handful of
  * materials, so this turns ~1,500 draw calls into a few hundred while keeping
- * frustum culling useful (cells are `cell` metres square).
+ * frustum culling useful (cells are `cell` metres square, centred on the
+ * origin: the whole ±30 m arena is one cell, so it costs one draw per
+ * material, and only the outskirts around it are split up for culling).
  *
  * Solid shadow casters don't cast from their visible batches: they're merged a
  * second time, positions only, into one depth-only proxy per cell, so the sun's
@@ -113,7 +166,7 @@ function freezeStatic(obj, log) {
  * are left alone. Originals are hidden rather than removed, so React still owns
  * them.
  */
-export function StaticBatcher({ children, cell = 32 }) {
+export function StaticBatcher({ children, cell = 64 }) {
   const root = useRef(null)
   const out = useRef(null)
 
@@ -134,7 +187,7 @@ export function StaticBatcher({ children, cell = 32 }) {
       // Decals (transparent, no depth write) merge fine; other transparent things need sorting.
       if (mat.transparent && mat.depthWrite) return
       _centre.setFromMatrixPosition(obj.matrixWorld)
-      const cellKey = `${Math.floor(_centre.x / cell)},${Math.floor(_centre.z / cell)}`
+      const cellKey = `${Math.floor(_centre.x / cell + 0.5)},${Math.floor(_centre.z / cell + 0.5)}`
       const proxied = obj.castShadow && !mat.transparent && !(mat.alphaTest > 0)
       if (proxied) {
         const side = mat.side === FrontSide ? FrontSide : DoubleSide
@@ -145,15 +198,16 @@ export function StaticBatcher({ children, cell = 32 }) {
         proxies.get(pk).geos.push(g)
       }
       const cast = obj.castShadow && !proxied
-      const key = `${mat.uuid}|${cast}|${obj.receiveShadow}|${cellKey}`
-      if (!buckets.has(key)) buckets.set(key, { cast, items: [] })
+      const look = tintlessKey(mat)
+      const key = `${look}|${cast}|${obj.receiveShadow}|${cellKey}`
+      if (!buckets.has(key)) buckets.set(key, { cast, look, items: [] })
       buckets.get(key).items.push(obj)
     })
 
     const created = []
     const hidden = []
     const uncast = []
-    for (const { cast, items } of buckets.values()) {
+    for (const { cast, look, items } of buckets.values()) {
       if (items.length < 2) {
         // Left as it is, but its shadow now comes from the proxy.
         for (const src of items) {
@@ -164,15 +218,19 @@ export function StaticBatcher({ children, cell = 32 }) {
         }
         continue
       }
+      // Same material throughout: draw with it. Only the colour differs: one
+      // white vertex-coloured copy, each piece's colour baked into its vertices.
+      const mixed = items.some((it) => it.material !== items[0].material)
       const merged = mergeAll(
         items.map((mesh) => {
           const g = mesh.geometry.clone()
           g.applyMatrix4(m.multiplyMatrices(toLocal, mesh.matrixWorld))
-          return normalise(g)
+          normalise(g)
+          return mixed ? addTint(g, mesh.material.color) : g
         }),
       )
       if (!merged) continue
-      const mesh = new Mesh(merged, items[0].material)
+      const mesh = new Mesh(merged, mixed ? tintedMaterial(look, items[0].material) : items[0].material)
       mesh.castShadow = cast
       mesh.receiveShadow = items[0].receiveShadow
       mesh.matrixAutoUpdate = false

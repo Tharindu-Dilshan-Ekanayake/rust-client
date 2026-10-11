@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { memo, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { AdditiveBlending, CanvasTexture, Object3D, SpriteMaterial, SRGBColorSpace, Vector3 } from 'three'
+import { Object3D, Vector3 } from 'three'
 
 import { sfx } from '../../audio/sfx.js'
 import { renderTime, sampleRemote } from '../../net/network.js'
@@ -8,54 +8,15 @@ import { PLAYER } from '../../shared/constants.js'
 import { ladderAt } from '../../shared/map.js'
 import { parseKit } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
-import { createWeaponModel } from '../models/weaponModels.js'
+import { createWeaponLod, createWeaponModel, hasWeaponModel, prepareWeaponModel } from '../models/weaponModels.js'
 import { CROUCH_DROP, CROUCH_LEAN } from '../avatarRig.js'
 import PlayerAvatar from '../PlayerAvatar.jsx'
 import { runtime } from '../runtime.js'
-import { flareTexture } from '../world/textures.js'
 import { AvatarErrorBoundary, FallbackAvatar } from './FallbackAvatar.jsx'
+import { flashMaterial, glintMaterial, nameplateMaterial } from './sprites.js'
 
 const ENEMY_COLOR = '#E5484D'
 const FRIEND_COLOR = '#3FA9F5'
-
-const nameplateCache = new Map()
-function nameplateMaterial(name, color, onTop) {
-  const key = `${name}|${color}|${onTop}`
-  if (nameplateCache.has(key)) return nameplateCache.get(key)
-  const c = document.createElement('canvas')
-  c.width = 512
-  c.height = 96
-  const ctx = c.getContext('2d')
-  ctx.font = '700 54px Rajdhani, Oswald, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.lineWidth = 8
-  ctx.strokeStyle = 'rgba(0,0,0,0.75)'
-  ctx.strokeText(name.toUpperCase(), 256, 50)
-  ctx.fillStyle = color
-  ctx.fillText(name.toUpperCase(), 256, 50)
-  const tex = new CanvasTexture(c)
-  tex.colorSpace = SRGBColorSpace
-  const mat = new SpriteMaterial({ map: tex, depthTest: !onTop, depthWrite: false, transparent: true })
-  nameplateCache.set(key, mat)
-  return mat
-}
-
-const glintMaterial = new SpriteMaterial({
-  map: flareTexture(),
-  color: '#fff6dc',
-  blending: AdditiveBlending,
-  depthWrite: false,
-  transparent: true,
-  sizeAttenuation: false,
-})
-const flashMaterial = new SpriteMaterial({
-  map: flareTexture(),
-  color: '#ffcf7a',
-  blending: AdditiveBlending,
-  depthWrite: false,
-  transparent: true,
-})
 
 const _sample = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0 }
 const _v = new Vector3()
@@ -86,6 +47,15 @@ const HOLDS = {
 const LONG_GUNS = new Set(['ar', 'sniper', 'smg', 'shotgun', 'lmg', 'rpg'])
 const holdFor = (id) => (LONG_GUNS.has(id) ? HOLDS.rifle : id === 'knife' ? HOLDS.knife : HOLDS.pistol)
 const lerp = (a, b, t) => a + (b - a) * t
+/**
+ * A player's gun is drawn as its one-mesh LOD (a dozen draws become one) once
+ * it's as small on screen as at 14 m with a 70° view, and back to full detail
+ * at 12 m (no flicker at the edge). Zooming in (ADS, scopes) counts: through a
+ * sniper scope a player 40 m out still gets the full gun.
+ */
+const LOD_TAN = Math.tan((70 * Math.PI) / 360)
+const LOD_FAR = 14 * LOD_TAN
+const LOD_NEAR = 12 * LOD_TAN
 const ease = (t) => t * t * (3 - 2 * t)
 
 const RemotePlayer = memo(function RemotePlayer({ id }) {
@@ -218,14 +188,29 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     const w = weaponRef.current
     // A melee (V or a slash) puts the knife in hand for the swing.
     const weaponId = now - (r.meleeAt ?? -1e9) < 520 ? 'knife' : r.weapon || 'ar'
-    const kitKey = `${weaponId}|${r.kit ?? ''}`
+    // A gun + attachments combination we haven't built yet is built in idle
+    // time (a step per frame); the gun with default attachments stands in.
+    let kit = parseKit(r.kit)[weaponId]
+    if (!hasWeaponModel(weaponId, kit)) {
+      prepareWeaponModel(weaponId, kit)
+      kit = undefined
+    }
+    const kitKey = kit === undefined ? `${weaponId}|default` : `${weaponId}|${r.kit ?? ''}`
     if (holder.current && w.id !== kitKey) {
       holder.current.clear()
-      const model = createWeaponModel(weaponId, parseKit(r.kit)[weaponId])
+      const model = createWeaponModel(weaponId, kit)
       model.rotation.y = Math.PI
       holder.current.add(model)
+      const lod = createWeaponLod(weaponId, kit)
+      if (lod) {
+        lod.rotation.y = Math.PI
+        lod.visible = false
+        holder.current.add(lod)
+      }
       w.id = kitKey
       w.model = model
+      w.lod = lod
+      w.far = false
       w.muzzle = model.getObjectByName('muzzle')
       w.grip = model.getObjectByName('grip')
       w.mag = model.getObjectByName('mag')
@@ -241,6 +226,17 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
         w.support.name = 'support'
         w.support.position.set(0, lh.position.y, Math.max(lh.position.z, -0.32))
         model.add(w.support)
+      }
+    }
+    // Far away: the one-mesh gun. The full model stays in the graph (hidden) so
+    // its markers still place the hands, the muzzle flash and the scope glint.
+    if (w.lod) {
+      const size = state.camera.position.distanceTo(g.position) * Math.tan((state.camera.fov * Math.PI) / 360)
+      const far = w.far ? size > LOD_NEAR : size > LOD_FAR
+      if (far !== w.far) {
+        w.far = far
+        w.model.visible = !far
+        w.lod.visible = far
       }
     }
 
@@ -311,28 +307,31 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     // --- Hands onto the gun (two-bone IK, solved in the avatar's frame) --------------------
     m.ik = null
     if (holding && pivot.current && w.grip) {
-      g.updateWorldMatrix(true, true)
-      w.grip.getWorldPosition(ik.right)
+      // Bring this player and the gun's matrices up to date once, then read
+      // them directly (getWorldPosition would rebuild every ancestor each call).
+      pivot.current.updateWorldMatrix(true, true)
+      const at = (o, out) => out.setFromMatrixPosition(o.matrixWorld)
+      at(w.grip, ik.right)
       // Elbows down and out (and back for the trailing arm); prone, they rest on
       // the ground ahead of the shoulders.
-      ik.poleR.copy(g.localToWorld(_local.set(lerp(-0.95, -0.7, pr), lerp(0.65 - drop, -0.2, pr), lerp(-0.45, 0.25, pr))))
-      ik.poleL.copy(g.localToWorld(_local.set(lerp(0.95, 0.7, pr), lerp(0.65 - drop, -0.2, pr), lerp(0.1, 0.35, pr))))
+      ik.poleR.copy(_local.set(lerp(-0.95, -0.7, pr), lerp(0.65 - drop, -0.2, pr), lerp(-0.45, 0.25, pr)).applyMatrix4(g.matrixWorld))
+      ik.poleL.copy(_local.set(lerp(0.95, 0.7, pr), lerp(0.65 - drop, -0.2, pr), lerp(0.1, 0.35, pr)).applyMatrix4(g.matrixWorld))
       let left = null
       if (throwing) {
         // Off hand winds back past the ear, then whips forward.
         const t = sinceThrow / 650
         const back = t < 0.4 ? t / 0.4 : Math.max(0, 1 - (t - 0.4) / 0.2)
         const fwd = t < 0.4 ? 0 : Math.min(1, (t - 0.4) / 0.25)
-        left = g.localToWorld(_local.set(lerp(0.45, 0.3, fwd), 1.62 - drop + back * 0.15, lerp(-0.25 * back, 0.75, fwd)))
+        left = _local.set(lerp(0.45, 0.3, fwd), 1.62 - drop + back * 0.15, lerp(-0.25 * back, 0.75, fwd)).applyMatrix4(g.matrixWorld)
       } else if (reloading && w.mag) {
         const grab = reloadT < 0.15 ? reloadT / 0.15 : reloadT < 0.75 ? 1 : Math.max(0, 1 - (reloadT - 0.75) / 0.2)
-        w.mag.getWorldPosition(_v)
+        at(w.mag, _v)
         _v.y -= 0.12
-        if (w.support) w.support.getWorldPosition(ik.left)
+        if (w.support) at(w.support, ik.left)
         else ik.left.copy(_v)
         left = ik.left.lerp(_v, grab)
       } else if (w.support && weaponId !== 'knife' && !(hold.oneHandLow && aimK < 0.5)) {
-        w.support.getWorldPosition(ik.left)
+        at(w.support, ik.left)
         left = ik.left
       }
       if (left && left !== ik.left) ik.left.copy(left)
@@ -400,7 +399,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
 
   const fallbackColor = plate.color === FRIEND_COLOR ? '#3d6f9c' : '#8d3b3b'
   return (
-    <group ref={root}>
+    <group ref={root} name="remote">
       <group ref={body}>
         <AvatarErrorBoundary fallback={<FallbackAvatar motionRef={motion} color={fallbackColor} />}>
           <Suspense fallback={<FallbackAvatar motionRef={motion} color={fallbackColor} />}>

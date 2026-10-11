@@ -1,4 +1,3 @@
-import { Client } from '@colyseus/sdk'
 import { Vector3 } from 'three'
 
 import { reloadFoley } from '../audio/bank.js'
@@ -14,11 +13,13 @@ import {
   RESPAWN_DELAY,
   ROOM_CODE_LENGTH,
   ROOM_NAME,
+  SERVER_MOVING_CODE,
   TEAM_LABELS,
   TEAM_SELECT_TIMEOUT,
 } from '../shared/constants.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { currentRank, getGame, toWireClass, useGameStore } from '../store/gameStore.js'
+import { DIRECT_URL, openRoom, USE_MATCHMAKER } from './endpoint.js'
 
 /**
  * Colyseus connection + everything that turns server traffic into game state.
@@ -26,9 +27,6 @@ import { currentRank, getGame, toWireClass, useGameStore } from '../store/gameSt
  * Remote players are rendered INTERP_DELAY_MS in the past, blended between the
  * two patches around that time, so 20 Hz patches look smooth at any framerate.
  */
-
-const SERVER_URL =
-  import.meta.env.VITE_SERVER_URL || `${window.location.protocol}//${window.location.hostname}:3000`
 
 const ROOM_KEY_RE = new RegExp(`^[A-Z2-9]{${ROOM_CODE_LENGTH}}$`)
 
@@ -38,6 +36,10 @@ export const normalizeRoomCode = (code) =>
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
     .slice(0, ROOM_CODE_LENGTH)
+
+/** Automatic rejoins (server moved, link dropped) allowed per REJOIN_WINDOW_MS. */
+const REJOIN_LIMIT = 3
+const REJOIN_WINDOW_MS = 120000
 
 const BUFFER_MAX = 32
 const UI_SNAPSHOT_MS = 150
@@ -64,8 +66,9 @@ function releasePointer() {
 }
 
 class Network {
-  client = null
   room = null
+  /** Times of recent automatic rejoins (see mayRejoin). */
+  rejoins = []
   /** id -> [{ t, x, y, z, yaw, pitch, seq }] */
   buffers = new Map()
   selfState = ''
@@ -126,20 +129,31 @@ class Network {
       xpFeed: [],
       promotion: null,
     })
-    try {
-      this.client ??= new Client(SERVER_URL)
-      const room = await open(this.client, {
-        name: game.playerName || displayName(getBloxityState()),
-        avatar: avatarPayload(),
-        classData: cls,
-        rank: currentRank(),
+    const joinOptions = {
+      name: game.playerName || displayName(getBloxityState()),
+      avatar: avatarPayload(),
+      classData: cls,
+      rank: currentRank(),
+    }
+    // Retrying can't fix an old server or a wrong / full room key.
+    const fatal = (err) => {
+      const text = String(err?.message ?? '')
+      return text === 'OUTDATED_SERVER' || (Boolean(code) && /not found|invalid|no rooms|locked|full/i.test(text))
+    }
+    const onWait = (why) =>
+      store.setState({
+        connection: { status: 'connecting', error: '', note: why === 'cold' ? 'Starting a server for you…' : 'Finding a server…' },
       })
+    try {
+      const room = await openRoom((client) => open(client, joinOptions), { onWait, fatal })
       this.attach(room)
       store.setState({ connection: { status: 'connected', error: '' }, myId: room.sessionId })
     } catch (err) {
       console.error('[net] join failed', err)
       const text = String(err?.message ?? '')
-      let error = `Could not reach the game server at ${SERVER_URL}. Is rust-server running?`
+      let error = USE_MATCHMAKER
+        ? 'Could not reach a game server. Check your connection and try again.'
+        : `Could not reach the game server at ${DIRECT_URL}. Is rust-server running?`
       if (text === 'OUTDATED_SERVER') {
         error = 'The game server is running an older build without private rooms. Restart rust-server (Ctrl+C, then npm start) and try again.'
       }
@@ -224,17 +238,33 @@ class Network {
     room.onLeave((code) => {
       if (this.room !== room) return
       const intentional = this.leaving
+      const privateRoom = Boolean(useGameStore.getState().roomCode)
+      const retry = this.retry
       this.reset()
-      if (!intentional) {
-        useGameStore.setState({ connection: { status: 'error', error: `Disconnected from server (code ${code}).` } })
-        getGame().pushNotice('DISCONNECTED FROM SERVER', 4000, 'warn')
+      if (intentional) return
+      // The server is going away (a deploy) or the link dropped: public players
+      // get a fresh server from the matchmaker and carry on. A private room's key
+      // died with its server, so those players go back to the menu.
+      const moving = code === SERVER_MOVING_CODE
+      if (!privateRoom && retry && this.mayRejoin()) {
+        retry()
+        useGameStore.setState((s) => ({
+          connection: { ...s.connection, note: moving ? 'Server update — moving you to a new server…' : 'Connection lost — rejoining…' },
+        }))
+        return
       }
+      const error = moving
+        ? 'The server was updated, which closed this private room. Open it again (it gets a new key) or join another.'
+        : `Disconnected from server (code ${code}).`
+      useGameStore.setState({ connection: { status: 'error', error } })
+      getGame().pushNotice('DISCONNECTED FROM SERVER', 4000, 'warn')
     })
     room.onError((code, message) => console.warn('[net] room error', code, message))
 
     const on = (type, fn) => room.onMessage(type, fn)
     on('welcome', (m) => useGameStore.setState({ myId: m.id, mode: m.mode, roomCode: m.code ?? '', maxPlayers: m.max ?? MAX_PLAYERS }))
     on('ping', (m) => room.send('pong', { t: m.t }))
+    on('notice', (m) => getGame().pushNotice(String(m.text ?? ''), Number(m.ms) || 4000, 'warn'))
     on('team_select', (m) =>
       useGameStore.setState({ teamSelect: { deadline: performance.now() + (m.timeout ?? TEAM_SELECT_TIMEOUT) * 1000, denied: '' } }),
     )
@@ -328,6 +358,15 @@ class Network {
         this.send('avatar', avatarPayload())
       }
     })
+  }
+
+  /** Caps automatic rejoins so a server that keeps dropping us can't loop forever. */
+  mayRejoin() {
+    const now = Date.now()
+    this.rejoins = this.rejoins.filter((t) => now - t < REJOIN_WINDOW_MS)
+    if (this.rejoins.length >= REJOIN_LIMIT) return false
+    this.rejoins.push(now)
+    return true
   }
 
   enterDeploy() {

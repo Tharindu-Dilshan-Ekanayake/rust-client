@@ -1,11 +1,13 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { Group } from 'three'
+import { Bone, BoxGeometry, BufferAttribute, DataTexture, Group, MeshDepthMaterial, Skeleton, SkinnedMesh } from 'three'
 
-import { WEAPONS } from '../shared/weapons.js'
-import { useGameStore } from '../store/gameStore.js'
-import { createWeaponModel } from './models/weaponModels.js'
+import { BOT_KITS, PRESET_CLASSES, WEAPONS } from '../shared/weapons.js'
+import { toWireClass, useGameStore } from '../store/gameStore.js'
+import { avatarSkinMaterial } from './avatarRig.js'
+import { createWeaponLod, createWeaponModel, prepareWeaponModel } from './models/weaponModels.js'
 import { makeArm } from './player/arms.js'
+import { spriteShowcase } from './remote/sprites.js'
 import { detectQuality, QUALITY_STEPS } from './quality.js'
 import { runtime } from './runtime.js'
 
@@ -16,9 +18,10 @@ import { runtime } from './runtime.js'
  *    render scale;
  *  - redraws the sun's shadow map every frame on High and every other frame
  *    below that (the sun and the map never move; only players do);
- *  - compiles every shader and uploads every texture up front, whenever new
- *    things appear in the scene, so the first shot, first grenade or first
- *    enemy on screen doesn't freeze the game while the GPU driver catches up.
+ *  - compiles every shader and uploads every texture up front (and again for
+ *    anything new that turns up later: a player joining, a weapon pulled out)
+ *    so the first shot, first grenade or first enemy on screen doesn't freeze
+ *    the game while the GPU driver catches up.
  */
 
 const TEXTURE_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'alphaMap', 'aoMap', 'bumpMap', 'lightMap']
@@ -34,13 +37,80 @@ function weaponShowcase() {
     }
   }
   g.add(makeArm(1))
+  // Guns other players are sure to carry, built now rather than when they
+  // first show up: every bot loadout and the preset classes, with far LODs.
+  const kits = [
+    ...Object.entries(BOT_KITS).flatMap(([id, list]) => list.map((att) => [id, att])),
+    ...PRESET_CLASSES.map((c) => [c.primary, c.primaryAtt]),
+  ]
+  for (const [id, att] of kits) {
+    g.add(createWeaponModel(id, att))
+    const lod = createWeaponLod(id, att)
+    if (lod) g.add(lod)
+  }
+  for (const body of avatarStandIns()) g.add(body)
+  g.add(spriteShowcase())
   return g
 }
 
-function countObjects(scene) {
-  let n = 0
-  scene.traverse(() => n++)
-  return n
+/**
+ * Stand-ins for a player's body: the same skinned material, without and with
+ * its skin texture (the texture lands a moment after the body does). Their
+ * shaders took ~0.5 s to build the first time players appeared in a match.
+ */
+function avatarStandIns() {
+  const texture = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
+  texture.needsUpdate = true
+  return [null, texture].map((map) => {
+    const geometry = new BoxGeometry(0.05, 0.05, 0.05)
+    const n = geometry.getAttribute('position').count
+    const weights = new Float32Array(n * 4)
+    for (let i = 0; i < n; i++) weights[i * 4] = 1
+    geometry.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(n * 4), 4))
+    geometry.setAttribute('skinWeight', new BufferAttribute(weights, 4))
+    const material = avatarSkinMaterial()
+    material.map = map
+    const body = new SkinnedMesh(geometry, material)
+    const bone = new Bone()
+    body.add(bone)
+    body.bind(new Skeleton([bone]))
+    body.castShadow = true
+    body.receiveShadow = true
+    body.frustumCulled = false
+    ownDepthMaterial(body)
+    return body
+  })
+}
+
+/**
+ * three.js draws every shadow caster with one shared depth material, which
+ * needs a different shader for skinned and instanced meshes: each switch between
+ * kinds in the shadow pass looked the shader up again. Those get their own.
+ */
+const depthFor = { skinned: new MeshDepthMaterial(), instanced: new MeshDepthMaterial() }
+function ownDepthMaterial(o) {
+  if (!o.castShadow || o.customDepthMaterial) return
+  if (o.isSkinnedMesh) o.customDepthMaterial = depthFor.skinned
+  else if (o.isInstancedMesh) o.customDepthMaterial = depthFor.instanced
+}
+
+const materialsOf = (o) => (Array.isArray(o.material) ? o.material : o.material ? [o.material] : [])
+
+/** Drawables under `root` with a material not in `seen` (and marks those seen). */
+function freshObjects(root, seen) {
+  const fresh = []
+  root.traverse((o) => {
+    if (!(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return
+    ownDepthMaterial(o)
+    let isNew = false
+    for (const m of materialsOf(o)) {
+      if (seen.has(m)) continue
+      seen.add(m)
+      isNew = true
+    }
+    if (isNew) fresh.push(o)
+  })
+  return fresh
 }
 
 export function PerfDirector() {
@@ -50,7 +120,17 @@ export function PerfDirector() {
   const quality = useGameStore((s) => s.settings.quality)
   const auto = useGameStore((s) => s.settings.qualityAuto)
   const showcase = useMemo(() => weaponShowcase(), [])
-  const st = useRef({ frame: 0, compiledAt: -1, slow: 0, lastFps: 0 })
+  const classId = useGameStore((s) => s.selectedClassId)
+  const classes = useGameStore((s) => s.classes)
+
+  // Your own class's guns, built in idle time while you're still in the menus.
+  useEffect(() => {
+    const c = toWireClass(useGameStore.getState().getClass(classId))
+    if (!c) return
+    prepareWeaponModel(c.primary, c.primaryAtt)
+    prepareWeaponModel(c.secondary, c.secondaryAtt)
+  }, [classId, classes])
+  const st = useRef({ frame: 0, compiledAt: '', seenWorld: new WeakSet(), seenVm: new WeakSet(), parked: 0, slow: 0, lastFps: 0 })
 
   // First run: choose a quality for this machine.
   useEffect(() => {
@@ -73,20 +153,40 @@ export function PerfDirector() {
     const s = st.current
     s.frame++
 
+    // The showcase sits under the map for a few frames after a warm-up (see below).
+    if (s.parked > 0 && --s.parked === 0) scene.remove(showcase)
+
     // Shadows: every frame on High, every other frame otherwise.
     const every = quality === 'high' ? 1 : 2
     gl.shadowMap.autoUpdate = every === 1
     if (every > 1 && s.frame % every === 0) gl.shadowMap.needsUpdate = true
 
-    // Warm-up: when the scene gains objects (map loaded, joining a match,
-    // players spawning in), compile and upload everything new.
+    // Warm-up. Everything at once whenever what every shader depends on
+    // changes (the reflection maps arriving, shadows on/off); in between, only
+    // objects whose materials haven't been drawn yet (a player joining, a
+    // weapon pulled out), so a busy match never recompiles the whole scene.
     if (s.frame % 45 === 3) {
-      // Anything that changes which shader a material needs: new objects, the
-      // reflection maps arriving, shadows on/off.
-      const sig = `${countObjects(scene)}|${Boolean(scene.environment)}|${Boolean(runtime.vm?.scene.environment)}|${quality}`
+      const vm = runtime.vm
+      const sig = `${Boolean(scene.environment)}|${Boolean(vm?.scene.environment)}|${quality}`
       if (sig !== s.compiledAt) {
         s.compiledAt = sig
+        s.seenWorld = new WeakSet()
+        s.seenVm = new WeakSet()
+        freshObjects(scene, s.seenWorld)
+        if (vm) freshObjects(vm.scene, s.seenVm)
         warmUp(gl, scene, camera, showcase)
+        // The shadow pass builds its own (depth) shaders, and only for things
+        // really in the scene: park the showcase under the map for a few frames
+        // so those are built now too, not when the first player turns up.
+        showcase.position.set(0, -12, 0)
+        scene.add(showcase)
+        showcase.updateMatrixWorld(true)
+        gl.shadowMap.needsUpdate = true
+        s.parked = 4
+      } else {
+        const world = freshObjects(scene, s.seenWorld)
+        const own = vm ? freshObjects(vm.scene, s.seenVm) : []
+        if (world.length || own.length) warmUpObjects(gl, world, scene, camera, own, vm)
       }
     }
 
@@ -108,6 +208,28 @@ export function PerfDirector() {
   return null
 }
 
+/** Uploads the textures a set of materials draws with. */
+function initTextures(gl, materials) {
+  for (const m of materials) {
+    for (const k of TEXTURE_KEYS) if (m[k]?.isTexture) gl.initTexture(m[k])
+    if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u?.value?.isTexture) gl.initTexture(u.value)
+  }
+}
+
+/** Compiles just these objects, against the lights of the scene each is drawn in. */
+function warmUpObjects(gl, world, scene, camera, own, vm) {
+  const prev = gl.getRenderTarget()
+  gl.setRenderTarget(runtime.gradeTarget ?? null)
+  try {
+    const materials = new Set()
+    for (const o of world) for (const m of gl.compile(o, camera, scene)) materials.add(m)
+    for (const o of own) for (const m of gl.compile(o, vm.camera, vm.scene)) materials.add(m)
+    initTextures(gl, materials)
+  } finally {
+    gl.setRenderTarget(prev)
+  }
+}
+
 /** Compiles shaders and uploads textures for the scene (and the weapons) into the target it's drawn to. */
 function warmUp(gl, scene, camera, showcase) {
   const target = runtime.gradeTarget ?? null
@@ -120,10 +242,7 @@ function warmUp(gl, scene, camera, showcase) {
       for (const m of gl.compile(runtime.vm.scene, runtime.vm.camera)) materials.add(m)
       for (const m of gl.compile(showcase, runtime.vm.camera, runtime.vm.scene)) materials.add(m)
     }
-    for (const m of materials) {
-      for (const k of TEXTURE_KEYS) if (m[k]?.isTexture) gl.initTexture(m[k])
-      if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u?.value?.isTexture) gl.initTexture(u.value)
-    }
+    initTextures(gl, materials)
   } finally {
     gl.setRenderTarget(prev)
   }

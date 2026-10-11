@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { BloxityContext } from './BloxityContext'
 import { getSDK, safeCall, toUnsubscribe, waitForSDK } from './sdk'
@@ -69,9 +69,8 @@ function initOnce(gameSlug, signal) {
  * @param {{ gameSlug?: string, children: React.ReactNode }} props
  */
 export function BloxityProvider({ gameSlug, children }) {
-  // >>> FILL ME IN <<< Set VITE_GAME_SLUG in client/.env to the slug from your
-  // Bloxity developer dashboard. The `gameSlug` prop overrides it if passed.
-  const slug = gameSlug || import.meta.env.VITE_GAME_SLUG || 'MY_GAME_SLUG'
+  // The game's slug on Bloxity (My Games). VITE_GAME_SLUG or the `gameSlug` prop override it.
+  const slug = gameSlug || import.meta.env.VITE_GAME_SLUG || 'modern-guns'
 
   const status = useBloxityStore((s) => s.status)
   const error = useBloxityStore((s) => s.error)
@@ -83,13 +82,6 @@ export function BloxityProvider({ gameSlug, children }) {
   const sdkRef = useRef(null)
 
   useEffect(() => {
-    if (slug === 'MY_GAME_SLUG') {
-      console.warn(
-        '[bloxity] VITE_GAME_SLUG is still the placeholder "MY_GAME_SLUG". ' +
-          'Set it in client/.env before testing a real login.',
-      )
-    }
-
     const controller = new AbortController()
     const store = useBloxityStore.getState()
     const unsubscribers = []
@@ -179,21 +171,8 @@ export function BloxityProvider({ gameSlug, children }) {
     }
   }, [slug])
 
-  const login = useCallback(() => {
-    const sdk = sdkRef.current || getSDK()
-    if (!sdk) {
-      console.warn('[bloxity] login() called before the SDK was ready')
-      return
-    }
-    // Login state arrives via onUserChanged — deliberately nothing to await here.
-    safeCall(sdk.auth.showAuthPopup?.bind(sdk.auth))
-  }, [])
-
-  const logout = useCallback(() => {
-    const sdk = sdkRef.current || getSDK()
-    if (!sdk) return
-    safeCall(sdk.auth.logout?.bind(sdk.auth))
-  }, [])
+  // No login or logout here: the game opens signed in to the player's Bloxity
+  // account from the portal, or as a Bloxity guest (auth.getGuest) without one.
 
   // Loading-screen + room helpers, exposed so gameplay code doesn't reach for
   // `window.Legion` directly.
@@ -217,14 +196,12 @@ export function BloxityProvider({ gameSlug, children }) {
       isLoggedIn: Boolean(user),
       /** Always something displayable, per the getUser() || getGuest() pattern. */
       identity: user || guest,
-      login,
-      logout,
       avatar: equipped,
       proportions: proportions || DEFAULT_PROPORTIONS,
       game,
       gameSlug: slug,
     }),
-    [status, error, user, guest, equipped, proportions, login, logout, game, slug],
+    [status, error, user, guest, equipped, proportions, game, slug],
   )
 
   return <BloxityContext.Provider value={value}>{children}</BloxityContext.Provider>

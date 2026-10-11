@@ -154,7 +154,10 @@ export function GameCanvas() {
     >
       <Suspense fallback={null}>
         <SceneEnvironment quality={quality} />
-        <Physics>
+        {/* Nothing here is simulated (map colliders + our own capsule, moved by the
+            character controller), so one step a frame keeps queries current; a
+            fixed step would catch up with many steps after a slow frame. */}
+        <Physics timeStep="vary">
           <DustlineMap />
           {inRoom && <LocalPlayer />}
           {inRoom && <ClimbHands />}

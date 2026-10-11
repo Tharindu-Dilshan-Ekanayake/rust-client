@@ -1,8 +1,8 @@
-# Dustline — client
+# Modern Guns — client
 
-Browser FPS built with React Three Fiber + Rapier, played with your **Bloxity**
-avatar. Up to 8 players per lobby, Team Deathmatch or Free-for-all, on
-*Dustline Pumpstation* — a 60 × 60 m oil yard in a hazy desert, styled after
+**Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
+with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch or
+Free-for-all, on *Dustline Pumpstation* — a 60 × 60 m oil yard in a hazy desert, styled after
 MW's Rust. In the middle stands the refinery: a corrugated pump hall with an
 open bay, a deck over them reached by a conveyor ramp, a clad process tower with
 the company plate and a burning flare stack, and a raised tank platform. The
@@ -50,9 +50,36 @@ npm install
 npm run dev        # syncs ../rust-server/src/shared, then starts Vite
 ```
 
-The game server (`../rust-server`) must be running. The client connects to
-`VITE_SERVER_URL`, or `http(s)://<page host>:3000` when unset, so LAN play works
-out of the box. See `.env.example` (also `VITE_GAME_SLUG` for Bloxity login).
+The game server (`../rust-server`) must be running. Locally the client connects
+to `VITE_SERVER_URL`, or `http(s)://<page host>:3000` when unset, so LAN play
+works out of the box. See `.env.example`.
+
+## Hosting (Bloxity Legion)
+
+Game id `modern-guns`. Pushing to `dev` or `main` runs
+`.github/workflows/deploy.yml`: it builds with `VITE_USE_MATCHMAKER=1`, zips
+`dist` and uploads it to Bloxity's static hosting:
+
+| Branch | Frontend | Talks to |
+| --- | --- | --- |
+| `dev` | https://modern-guns.dev.play.bloxity.io | the dev backend |
+| `main` | https://modern-guns.play.bloxity.io | prod |
+
+The repo needs one Actions secret, `LEGION_DEPLOY_TOKEN` (My Games → eye icon);
+never put the token in the code or `.env`.
+
+Hosted, the client never opens its game socket to a fixed server. On every join
+`net/endpoint.js` asks the matchmaker for a seat
+(`Legion.SDK.net.resolveEndpoint('modern-guns')`; the SDK is loaded by a script
+tag in `index.html`, not bundled) and builds a **new** Colyseus `Client` from
+the endpoint it returns. A failed resolve or join is retried with backoff for up
+to a minute (a cold start takes a few seconds; the screen says *Starting a server
+for you…*). When a deploy replaces a server, the old one finishes its match and
+closes with code 4100 (`SERVER_MOVING_CODE`); public players are then moved to
+a fresh server automatically (*Server update — moving you to a new server…*).
+A private room's key dies with its server, so those players get a message
+instead. Friends who want the same private room should party up on Bloxity so
+the matchmaker seats them on the same server.
 
 ## Controls
 
@@ -120,10 +147,10 @@ src/
 ```
 
 Everything visual is procedural — no model or texture files besides the Bloxity
-avatar parts, which load from Bloxity's CDN. Static map meshes are merged into a
-few hundred batches at load (`world/StaticBatcher.jsx`); Settings → Graphics
-quality picks shadow-map size, dust and render scale, and *Auto resolution*
-lowers the render scale when the frame rate drops below ~45 FPS.
+avatar parts, which load from Bloxity's CDN. Static map meshes are merged at
+load (`world/StaticBatcher.jsx`); Settings → Graphics quality picks shadow-map
+size, dust and render scale, and *Auto resolution* lowers the render scale when
+the frame rate drops below ~45 FPS.
 
 ## Performance
 
@@ -134,13 +161,39 @@ Built to run smoothly on low-end PCs without hitches:
   even at the lowest render scale. *Auto resolution* trims the render scale first.
 - **Low**: no sun shadows, no colour grade, fewer dust particles. **Medium**:
   shadows redrawn every other frame, 2x MSAA on the grade. **High**: everything.
-- The map is merged into a few hundred static batches whose matrices are frozen,
-  and every solid shadow caster is merged again into one depth-only proxy per
-  32 m cell, so the shadow pass is a handful of draw calls.
-- Shaders are compiled and textures uploaded ahead of time (menus, joining,
-  quality changes), including the weapons for both the world and the viewmodel,
-  so the first spawn, shot or grenade doesn't freeze the game.
+- A full match (7 other players) is ~130–160 draw calls on High, down from ~580:
+  - The map is merged per material, with the whole arena as one cell (only the
+    outskirts are split up for culling). Materials that differ only in colour
+    share one batch, their colour baked into vertex colours (exactly the same
+    picture). Matrices of static things are frozen.
+  - Shadows come from positions-only stand-ins on a shadow-only layer
+    (`game/layers.js`): one per map cell and one per gun. The main pass never
+    sees them.
+  - A player's body (six skinned parts) is merged into one mesh with one
+    skeleton, frustum-culled, and their gun turns into a one-mesh LOD once it's
+    as small on screen as at ~14 m (zoom-aware, so scopes still show the full
+    gun).
+  - The viewmodel has its own copies of its materials, and skinned and
+    instanced shadow casters their own depth materials, so three.js never has
+    to look a shader up again mid-frame.
+- The arm IK reads world matrices directly instead of rebuilding every
+  ancestor several times per arm per player.
+- Physics steps once per frame (`timeStep="vary"`): nothing on the client is
+  simulated, and a fixed step caught up with dozens of steps after a slow frame.
+- Shaders are compiled and textures uploaded ahead of time, including the
+  players' bodies, name tags, every bot loadout and preset class, far LODs and
+  the shadow pass's own shaders, so the first spawn, the first enemy, shot or
+  grenade doesn't freeze the game. Anything new later (a player joining, a
+  weapon pulled out) is compiled on its own, never the whole scene again.
+- A gun + attachments combination nobody has built yet (another player's custom
+  class) is built in idle time a step per frame (`prepareWeaponModel`), with
+  the default-attachment gun standing in; your own class's guns are built while
+  you're still in the menus.
 - The sound bank is synthesised in a Web Worker, off the main thread.
+
+Measured (Playwright, online match with 7 bots, uncapped): High went from ~51 to
+~100 FPS on the dev machine, and from 3 to 10 FPS with Chrome's 4x CPU
+throttle; joining a match went from two ~0.5 s freezes to nothing over ~0.15 s.
 
 ## Dev tools
 

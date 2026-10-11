@@ -29,7 +29,7 @@ function Logo({ small = false }) {
   return (
     <div className="dl-logo" style={small ? { transform: 'scale(0.6)', transformOrigin: 'left bottom' } : undefined}>
       <div className="big">
-        DUST<span>LINE</span>
+        MODERN <span>GUNS</span>
       </div>
       <div className="sub">{MAP_NAME.toUpperCase()}</div>
     </div>
@@ -103,8 +103,13 @@ export function LoadingScreen() {
   )
 }
 
+/**
+ * Who you're playing as. The game opens already signed in to the Bloxity
+ * account from the portal, or as a Bloxity guest when there isn't one, so there
+ * is nothing to log in or out of here.
+ */
 function AccountChip() {
-  const { identity, isLoggedIn, login, logout, status } = useBloxity()
+  const { identity, isLoggedIn } = useBloxity()
   const name = identity?.displayName || identity?.username || 'Guest'
   return (
     <div className="dl-panel dl-account dl-interactive">
@@ -114,18 +119,9 @@ function AccountChip() {
           {name}
         </div>
         <div className="dl-muted" style={{ fontSize: 11 }}>
-          {isLoggedIn ? 'Signed in with Bloxity' : 'Playing as guest'}
+          {isLoggedIn ? 'Bloxity account' : 'Guest'}
         </div>
       </div>
-      {isLoggedIn ? (
-        <Button className="small ghost" onClick={logout}>
-          Log out
-        </Button>
-      ) : (
-        <Button className="small primary" onClick={login} disabled={status !== 'ready'}>
-          {status === 'ready' ? 'Log in' : '…'}
-        </Button>
-      )}
     </div>
   )
 }

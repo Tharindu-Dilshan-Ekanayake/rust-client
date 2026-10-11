@@ -15,6 +15,7 @@ import {
 
 import { seededRandom } from '../shared/math.js'
 import { FOG_COLOR, STORM_WIND, SUN_DIR } from './environment.js'
+import { enableShadowOnlyLayer } from './layers.js'
 import { runtime } from './runtime.js'
 import { DustStorm } from './DustStorm.jsx'
 import { softDotTexture } from './world/textures.js'
@@ -188,6 +189,9 @@ const SHADOW_SIZES = { low: 1024, medium: 2048, high: 4096 }
 
 export function SceneEnvironment({ dust = true, quality = 'high' }) {
   const sun = useRef(null)
+  const gl = useThree((st) => st.gl)
+  // Shadow-only stand-ins (merged map and gun shadows) live on their own layer.
+  useEffect(() => enableShadowOnlyLayer(gl), [gl])
   const sunPos = useMemo(() => SUN_DIR.clone().multiplyScalar(80), [])
   const shadowSize = SHADOW_SIZES[quality] ?? 2048
 

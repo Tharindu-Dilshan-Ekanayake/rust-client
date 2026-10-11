@@ -1,6 +1,8 @@
 import {
   AdditiveBlending,
   BufferAttribute,
+  BufferGeometry,
+  Color,
   CanvasTexture,
   CircleGeometry,
   CylinderGeometry,
@@ -8,6 +10,8 @@ import {
   ExtrudeGeometry,
   Group,
   IcosahedronGeometry,
+  LinearSRGBColorSpace,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
@@ -25,6 +29,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { sanitizeAttachments } from '../../shared/weapons.js'
+import { SHADOW_ONLY_LAYER } from '../layers.js'
 import { brushedFinish, metalFinish, paintFinish, rubberFinish, stippleFinish, woodFinish } from './weaponTextures.js'
 
 /**
@@ -1073,7 +1078,125 @@ function mergeStatics(root) {
   }
 }
 
+const shadowProxyMaterial = new MeshBasicMaterial()
+
+/**
+ * One positions-only stand-in that casts the shadow of every static part, on
+ * the shadow-only layer; the parts themselves stop casting. With eight players
+ * that's one shadow draw per gun instead of a dozen. Moving parts keep theirs.
+ */
+function addShadowProxy(root) {
+  const parts = []
+  root.traverse((c) => {
+    if (c.isMesh && c.castShadow && !c.material.transparent) parts.push(c)
+  })
+  if (parts.length < 2) return
+  root.updateMatrixWorld(true)
+  const toRoot = new Matrix4().copy(root.matrixWorld).invert()
+  const geos = parts.map((m) => {
+    const g = new BufferGeometry()
+    const src = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry
+    g.setAttribute('position', src.getAttribute('position').clone())
+    g.applyMatrix4(new Matrix4().multiplyMatrices(toRoot, m.matrixWorld))
+    return g
+  })
+  const merged = mergeGeometries(geos, false)
+  geos.forEach((g) => g.dispose())
+  if (!merged) return
+  const proxy = new Mesh(merged, shadowProxyMaterial)
+  proxy.name = 'shadowProxy'
+  proxy.castShadow = true
+  proxy.layers.set(SHADOW_ONLY_LAYER)
+  for (const m of parts) m.castShadow = false
+  root.add(proxy)
+}
+
 const templates = new Map()
+
+/* ---------------------------------------------------------------------------
+ * Far LOD: what a gun looks like from more than a dozen metres away
+ * ------------------------------------------------------------------------- */
+
+const lodMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.35 })
+const meanColors = new Map()
+
+/** Average colour of a texture's image (linear), or null; worked out once per texture. */
+function meanColor(texture) {
+  if (!texture?.image) return null
+  if (meanColors.has(texture)) return meanColors.get(texture)
+  let color
+  try {
+    const n = 16
+    const c = document.createElement('canvas')
+    c.width = c.height = n
+    const ctx = c.getContext('2d')
+    ctx.drawImage(texture.image, 0, 0, n, n)
+    const d = ctx.getImageData(0, 0, n, n).data
+    let r = 0
+    let g = 0
+    let b = 0
+    for (let i = 0; i < d.length; i += 4) {
+      r += d[i]
+      g += d[i + 1]
+      b += d[i + 2]
+    }
+    const k = 255 * n * n
+    color = new Color().setRGB(r / k, g / k, b / k, texture.colorSpace === SRGBColorSpace ? SRGBColorSpace : LinearSRGBColorSpace)
+  } catch {
+    color = null
+  }
+  meanColors.set(texture, color)
+  return color
+}
+
+/**
+ * The whole gun as one vertex-coloured mesh (each part's colour times its
+ * texture's average): a dozen draws become one. Only for players far enough
+ * away that the surface detail is a few pixels; casts its own shadow.
+ */
+function buildLod(model) {
+  model.updateMatrixWorld(true)
+  const toRoot = new Matrix4().copy(model.matrixWorld).invert()
+  const geos = []
+  model.traverse((o) => {
+    if (!o.isMesh || o.name === 'shadowProxy' || o.material.transparent || o.material.isMeshBasicMaterial) return
+    const src = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry
+    const g = new BufferGeometry()
+    g.setAttribute('position', src.getAttribute('position').clone())
+    if (src.getAttribute('normal')) g.setAttribute('normal', src.getAttribute('normal').clone())
+    else g.computeVertexNormals()
+    g.applyMatrix4(new Matrix4().multiplyMatrices(toRoot, o.matrixWorld))
+    const tint = o.material.color.clone()
+    const texel = meanColor(o.material.map)
+    if (texel) tint.multiply(texel)
+    const n = g.getAttribute('position').count
+    const colors = new Float32Array(n * 3)
+    for (let i = 0; i < n; i++) tint.toArray(colors, i * 3)
+    g.setAttribute('color', new BufferAttribute(colors, 3))
+    geos.push(g)
+  })
+  const merged = geos.length ? mergeGeometries(geos, false) : null
+  geos.forEach((g) => g.dispose())
+  if (!merged) return null
+  const mesh = new Mesh(merged, lodMaterial)
+  mesh.name = 'lod'
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  return mesh
+}
+
+const lods = new Map()
+
+/** Far-LOD stand-in for createWeaponModel(id, att), or null if it can't be built. */
+export function createWeaponLod(id, att) {
+  const a = sanitizeAttachments(id, att)
+  const key = keyOf(id, a)
+  if (!lods.has(key)) {
+    createWeaponModel(id, att)
+    lods.set(key, templates.has(key) ? buildLod(templates.get(key)) : null)
+  }
+  return lods.get(key)?.clone() ?? null
+}
 
 /**
  * Model instance for a weapon/equipment id with its attachments fitted. Each
@@ -1082,16 +1205,77 @@ const templates = new Map()
  */
 export function createWeaponModel(id, att) {
   const a = sanitizeAttachments(id, att)
-  const key = `${id}|${a.optic ?? ''}|${a.muzzle ?? ''}|${a.mag ?? ''}`
+  const key = keyOf(id, a)
   if (!templates.has(key)) {
-    const build = BUILDERS[id] ?? BUILDERS.ar
-    const model = build(a)
-    model.userData.weaponId = id
-    if (GRIPS[id]) marker(model, 'grip', GRIPS[id][0], GRIPS[id][1])
-    mergeStatics(model)
-    // Moving parts (slide, mag, bolt...) move as one piece, so batch inside them too.
-    for (const child of model.children) if (child.isGroup) mergeStatics(child)
-    templates.set(key, model)
+    // Finish a build already under way in idle time, or do the whole thing now.
+    const stages = pending.get(key)?.stages ?? buildStages(id, a, key)
+    pending.delete(key)
+    for (const stage of stages) stage()
   }
   return templates.get(key).clone(true)
+}
+
+const keyOf = (id, a) => `${id}|${a.optic ?? ''}|${a.muzzle ?? ''}|${a.mag ?? ''}`
+
+/** Building a gun, in steps of a few milliseconds each (see prepareWeaponModel). */
+function buildStages(id, a, key) {
+  let model = null
+  return [
+    () => {
+      model = (BUILDERS[id] ?? BUILDERS.ar)(a)
+      model.userData.weaponId = id
+      if (GRIPS[id]) marker(model, 'grip', GRIPS[id][0], GRIPS[id][1])
+    },
+    () => mergeStatics(model),
+    () => {
+      // Moving parts (slide, mag, bolt...) move as one piece, so batch inside them too.
+      for (const child of model.children) if (child.isGroup) mergeStatics(child)
+    },
+    () => {
+      addShadowProxy(model)
+      templates.set(key, model)
+    },
+  ]
+}
+
+/** True once this weapon + attachments combination is built (createWeaponModel is then instant). */
+export function hasWeaponModel(id, att) {
+  return templates.has(keyOf(id, sanitizeAttachments(id, att)))
+}
+
+const pending = new Map()
+let idleQueued = false
+const whenIdle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 32))
+
+function runPending() {
+  idleQueued = false
+  // One step per idle slot, so no single frame pays for a whole gun.
+  for (const [key, job] of pending) {
+    const stage = job.stages.shift()
+    if (stage) stage()
+    else {
+      if (!lods.has(key)) lods.set(key, buildLod(templates.get(key)))
+      pending.delete(key)
+    }
+    break
+  }
+  if (pending.size && !idleQueued) {
+    idleQueued = true
+    whenIdle(runPending)
+  }
+}
+
+/**
+ * Builds a combination (and its far LOD) in idle time, a step at a time; until
+ * it's ready, callers can show the gun with its default attachments.
+ */
+export function prepareWeaponModel(id, att) {
+  const a = sanitizeAttachments(id, att)
+  const key = keyOf(id, a)
+  if ((templates.has(key) && lods.has(key)) || pending.has(key)) return
+  pending.set(key, { stages: templates.has(key) ? [] : buildStages(id, a, key) })
+  if (!idleQueued) {
+    idleQueued = true
+    whenIdle(runPending)
+  }
 }

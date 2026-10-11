@@ -20,8 +20,12 @@ import {
   applyProportions,
   applySkin,
   attachAccessory,
+  avatarSkinMaterial,
   collectRig,
+  mergeBody,
+  shareSkeleton,
   solveArms,
+  unmergeBody,
 } from './avatarRig'
 
 /**
@@ -75,17 +79,16 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
   const rig = useMemo(() => {
     const collected = collectRig(character)
 
-    // The base body ships with an empty texture; give every skinned mesh its own
-    // material instance so a skin swap here can't leak into another avatar.
+    // The base body ships with an empty texture; this avatar gets its own material
+    // so a skin swap here can't leak into another avatar. Every part shows the
+    // same skin texture, so they share it (and one skeleton, see shareSkeleton).
+    const skin = avatarSkinMaterial()
     for (const mesh of collected.skinnedMeshes) {
-      mesh.material = new MeshStandardMaterial({
-        color: 0xffffff,
-        metalness: 0,
-        roughness: 1,
-      })
+      mesh.material = skin
       // Skinned meshes animate outside their bind-pose bounds.
       mesh.frustumCulled = false
     }
+    shareSkeleton(collected)
 
     if (!collected.skeleton) {
       console.warn('[bloxity] player.glb has no skeleton - avatar will not deform')
@@ -155,6 +158,7 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
     Promise.all(jobs)
       .then((results) => {
         if (cancelled) return
+        unmergeBody(rig)
 
         for (const result of results) {
           // One bad slot must not take the rest of the character down.
@@ -179,6 +183,8 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
           }
         }
 
+        // Six body parts, one draw.
+        mergeBody(rig)
         setAssembled(true)
       })
       .catch((err) => {
@@ -188,6 +194,7 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
 
     return () => {
       cancelled = true
+      unmergeBody(rig)
       for (const object of attached) {
         object.parent?.remove(object)
         object.traverse((child) => child.geometry?.dispose())

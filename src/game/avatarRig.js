@@ -1,4 +1,5 @@
-import { NearestFilter, Quaternion, Vector3 } from 'three'
+import { BufferGeometry, MeshStandardMaterial, NearestFilter, Quaternion, SkinnedMesh, Vector3 } from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { BACK_BONE, HAT_BONE, NECK_OFFSET_BONE, PART_SLOTS } from '../bloxity/avatarAssets'
 
@@ -120,6 +121,95 @@ export function collectRig(root) {
   }
 
   return rig
+}
+
+/** The body's material (the skin texture goes on as its map once loaded). */
+export function avatarSkinMaterial() {
+  return new MeshStandardMaterial({ color: 0xffffff, metalness: 0, roughness: 1 })
+}
+
+/**
+ * SkeletonUtils.clone gives each body mesh its own Skeleton over the same
+ * bones, so the same bone matrices were computed and uploaded six times per
+ * avatar every frame. Point every mesh at the first one's.
+ */
+export function shareSkeleton(rig) {
+  const shared = rig.skeleton
+  if (!shared) return
+  for (const mesh of rig.skinnedMeshes) {
+    const own = mesh.skeleton
+    if (!own || own === shared || own.bones.length !== shared.bones.length) continue
+    const same = own.bones.every((b, i) => b === shared.bones[i]) && own.boneInverses.every((m, i) => m.equals(shared.boneInverses[i]))
+    if (!same) continue
+    mesh.skeleton = shared
+    own.dispose()
+  }
+}
+
+const BODY_ATTRIBUTES = ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']
+
+/**
+ * Once assembled, the six body parts share a skeleton, a material and the skin
+ * texture, so they're drawn as one mesh: one draw and one shadow draw per
+ * player instead of six each. The parts stay in the rig, hidden, for the next
+ * assembly (unmergeBody). Anything that doesn't line up leaves them as they are.
+ *
+ * The merged mesh is frustum-culled against its bind-pose bounds, padded for
+ * limbs swinging and proportions stretching (the parts never were culled).
+ */
+export function mergeBody(rig) {
+  unmergeBody(rig)
+  const parts = rig.skinnedMeshes
+  const first = parts[0]
+  if (parts.length < 2 || !first?.parent) return
+  const lines = parts.every(
+    (m) =>
+      m.skeleton === first.skeleton &&
+      m.material === first.material &&
+      m.parent === first.parent &&
+      m.bindMode === first.bindMode &&
+      m.bindMatrix.equals(first.bindMatrix) &&
+      m.matrix.equals(first.matrix) &&
+      BODY_ATTRIBUTES.every((a) => m.geometry.getAttribute(a)),
+  )
+  if (!lines) return
+  const indexed = parts.every((m) => m.geometry.index)
+  let merged
+  try {
+    const geos = parts.map((m) => {
+      const g = new BufferGeometry()
+      if (indexed) g.setIndex(m.geometry.index)
+      const src = indexed ? m.geometry : m.geometry.toNonIndexed()
+      for (const a of BODY_ATTRIBUTES) g.setAttribute(a, src.getAttribute(a))
+      return g
+    })
+    merged = mergeGeometries(geos, false)
+  } catch {
+    merged = null
+  }
+  if (!merged) return
+  merged.computeBoundingSphere()
+  const body = new SkinnedMesh(merged, first.material)
+  body.name = 'mergedBody'
+  body.castShadow = true
+  body.receiveShadow = true
+  first.matrix.decompose(body.position, body.quaternion, body.scale)
+  body.bindMode = first.bindMode
+  body.bind(first.skeleton, first.bindMatrix)
+  body.boundingSphere = merged.boundingSphere.clone()
+  body.boundingSphere.radius *= 1.5
+  first.parent.add(body)
+  for (const m of parts) m.visible = false
+  rig.mergedBody = body
+}
+
+export function unmergeBody(rig) {
+  const body = rig.mergedBody
+  if (!body) return
+  body.parent?.remove(body)
+  body.geometry.dispose()
+  rig.mergedBody = null
+  for (const m of rig.skinnedMeshes) m.visible = true
 }
 
 /** Bloxity textures are authored unflipped and pixel-art filtered. */
@@ -528,16 +618,23 @@ const _hand = new Vector3()
 const _qa = new Quaternion()
 const _qb = new Quaternion()
 const _qp = new Quaternion()
+const _at = new Vector3()
+const _size = new Vector3()
 
-/** Rotates `bone` (in world terms) so the point `from` on it swings onto the line toward `to`. */
+/**
+ * Rotates `bone` (in world terms) so the point `from` on it swings onto the
+ * line toward `to`. World matrices must be current (see solveArms); this keeps
+ * them so for the bone and everything below it.
+ */
 function aimBone(bone, from, to) {
-  bone.getWorldPosition(_s)
+  _s.setFromMatrixPosition(bone.matrixWorld)
   _u.copy(from).sub(_s)
   _v.copy(to).sub(_s)
   if (_u.lengthSq() < 1e-10 || _v.lengthSq() < 1e-10) return
   _qa.setFromUnitVectors(_u.normalize(), _v.normalize())
-  bone.getWorldQuaternion(_qb).premultiply(_qa)
-  bone.parent.getWorldQuaternion(_qp)
+  bone.matrixWorld.decompose(_at, _qb, _size)
+  _qb.premultiply(_qa)
+  bone.parent.matrixWorld.decompose(_at, _qp, _size)
   bone.quaternion.copy(_qp.invert().multiply(_qb))
   bone.updateMatrixWorld(true)
 }
@@ -554,9 +651,9 @@ export function solveArm(rig, side, target, pole) {
   const end = rig.bones[`Arm${side}2_leaf`]?.bone
   if (!upper || !lower || !end || !target) return
 
-  upper.getWorldPosition(_s)
-  lower.getWorldPosition(_e)
-  end.getWorldPosition(_w)
+  _s.setFromMatrixPosition(upper.matrixWorld)
+  _e.setFromMatrixPosition(lower.matrixWorld)
+  _w.setFromMatrixPosition(end.matrixWorld)
   const shoulder = _t.copy(_s)
   const l1 = shoulder.distanceTo(_e)
   const l2 = _e.distanceTo(_w)
@@ -581,8 +678,8 @@ export function solveArm(rig, side, target, pole) {
   const handTarget = _w.copy(handPos)
 
   aimBone(upper, _e, _elbow)
-  lower.getWorldPosition(_e)
-  end.getWorldPosition(_u)
+  _e.setFromMatrixPosition(lower.matrixWorld)
+  _u.setFromMatrixPosition(end.matrixWorld)
   const tip = _p.copy(_u)
   aimBone(lower, tip, handTarget)
 }
@@ -593,6 +690,7 @@ export function solveArm(rig, side, target, pole) {
  */
 export function solveArms(rig, ik) {
   if (!rig?.skeleton || !ik) return
+  // Once for the whole rig; the solver reads matrixWorld directly from here on.
   rig.root.updateWorldMatrix(true, true)
   if (ik.right) solveArm(rig, 'R', ik.right, ik.poleR)
   if (ik.left) solveArm(rig, 'L', ik.left, ik.poleL)
