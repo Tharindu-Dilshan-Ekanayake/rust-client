@@ -8,14 +8,13 @@ import { avatarSkinMaterial } from './avatarRig.js'
 import { createWeaponLod, createWeaponModel, prepareWeaponModel } from './models/weaponModels.js'
 import { makeArm } from './player/arms.js'
 import { spriteShowcase } from './remote/sprites.js'
-import { detectQuality, QUALITY_STEPS } from './quality.js'
+import { QUALITY_STEPS } from './quality.js'
 import { runtime } from './runtime.js'
 
 /**
  * Keeps the game smooth on whatever it runs on:
- *  - picks a starting quality from the GPU on first run (while "Auto quality"
- *    is on), and steps it down if the frame rate stays low even at the lowest
- *    render scale;
+ *  - steps the quality down (while "Auto quality" is on) if the frame rate
+ *    stays low even at the lowest render scale (everyone starts on Low);
  *  - redraws the sun's shadow map every frame on High and every other frame
  *    below that (the sun and the map never move; only players do);
  *  - compiles every shader and uploads every texture up front (and again for
@@ -131,13 +130,6 @@ export function PerfDirector() {
     prepareWeaponModel(c.secondary, c.secondaryAtt)
   }, [classId, classes])
   const st = useRef({ frame: 0, compiledAt: '', seenWorld: new WeakSet(), seenVm: new WeakSet(), parked: 0, slow: 0, lastFps: 0 })
-
-  // First run: choose a quality for this machine.
-  useEffect(() => {
-    const s = useGameStore.getState()
-    if (!s.settings.qualityAuto || s.settings.qualityDetected) return
-    s.setSettings({ quality: detectQuality(gl), qualityDetected: true })
-  }, [gl])
 
   // The world never moves: don't rebuild the scene root's matrix every frame
   // (it forces every object below it to recompute its own).

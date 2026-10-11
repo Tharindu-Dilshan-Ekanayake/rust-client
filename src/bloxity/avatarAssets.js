@@ -6,10 +6,12 @@
  * portal), so an avatar built with this file matches what the player sees there.
  *
  * `avatar.getEquipped()` returns:
- *   { hatId, backId, skinId, headId, armLId, armRId, legLId, legRId, torsoId }
+ *   { hatId, backId, skinId, headId, armLId, armRId, legLId, legRId, torsoId,
+ *     hairId, maskId, neckId, chestId, waistId, handId, shoesId, faceId, pantsId, shirtId }
  */
 
 export const AVATAR_CDN = 'https://static.bloxity.io/avatars'
+export const BLOXITY_API = 'https://api.bloxity.io'
 
 /** The base humanoid body + skeleton. All other assets modify this. */
 export const BASE_BODY_URL = `${AVATAR_CDN}/player.glb`
@@ -62,6 +64,30 @@ export const assetUrls = {
   hatTexture: (id) => `${AVATAR_CDN}/textures/hats/${id}.png`,
   backMesh: (id) => `${AVATAR_CDN}/items/back/${id}.obj`,
   backTexture: (id) => `${AVATAR_CDN}/textures/back/${id}.png`,
+  /** Hand accessories (gloves, watches...): authored on the left hand, mirrored for the right. */
+  handMesh: (id) => `${AVATAR_CDN}/items/hand/${id}.obj`,
+  handTexture: (id) => `${AVATAR_CDN}/textures/hand/${id}.png`,
+}
+
+/** Clothing the API draws onto the skin texture, in the order the SDK puts it in the URL. */
+const CLOTHING = [
+  ['pantsId', 'pn'],
+  ['shirtId', 'sh'],
+  ['faceId', 'fc'],
+]
+const worn = (id) => isRealId(id) && String(id).trim() !== '0'
+
+/**
+ * The body texture for an equipped set, the way the SDK's getSkinTextureUrl()
+ * builds it: the skin with the worn pants, shirt and face already drawn on
+ * (`/v1/avatar/skin-texture/s{skin}_pn{..}_sh{..}_fc{..}.png`), or the plain
+ * skin when none of those is worn. Works for anyone's equipped set, not just ours.
+ */
+export function skinTextureUrl(equipped) {
+  const skin = worn(equipped?.skinId) ? String(equipped.skinId).trim() : DEFAULT_SKIN_ID
+  const clothes = CLOTHING.filter(([key]) => worn(equipped?.[key]))
+  if (!clothes.length) return assetUrls.skinTexture(skin)
+  return `${BLOXITY_API}/v1/avatar/skin-texture/s${skin}${clothes.map(([key, tag]) => `_${tag}${String(equipped[key]).trim()}`).join('')}.png`
 }
 
 /** Skin ids fall back to "0" rather than being skipped. */

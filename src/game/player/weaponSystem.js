@@ -439,7 +439,8 @@ export class WeaponSystem {
     runtime.view.cookStart = this.cooking ? this.cookStart : 0
 
     // --- ADS ---------------------------------------------------------------------
-    const wantAds = canAct && input.mouse.right && !ctx.sprinting && !ctx.lowered && w.adsTime > 0 && !busyThrow && !this.cooking && !this.quickKnife
+    // A reload takes the gun off the sight (the mag change happens at the hip).
+    const wantAds = canAct && input.mouse.right && !ctx.sprinting && !ctx.lowered && w.adsTime > 0 && !busyThrow && !this.cooking && !this.quickKnife && !this.reloading
     const adsRate = w.adsTime > 0 ? 1 / w.adsTime : 10
     this.ads = Math.max(0, Math.min(1, this.ads + (wantAds ? adsRate : -adsRate * 1.4) * dt))
 

@@ -10,6 +10,7 @@ import {
   isRealId,
   PART_SLOTS,
   skinIdOrDefault,
+  skinTextureUrl,
 } from '../bloxity/avatarAssets'
 import { loadOBJ, loadPartGLB, loadTexture } from '../bloxity/avatarLoader'
 import { useBloxity } from '../bloxity/BloxityContext'
@@ -119,10 +120,12 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
     const jobs = []
 
     // Skin always loads - "0" is the fallback, since the base body has no baked map.
+    // The skin with the worn shirt, pants and face drawn on; the plain skin if
+    // that texture can't be had.
     jobs.push(
-      loadTexture(assetUrls.skinTexture(skinIdOrDefault(equipped?.skinId))).then(
-        (texture) => ({ kind: 'skin', texture }),
-      ),
+      loadTexture(skinTextureUrl(equipped))
+        .then((texture) => texture ?? loadTexture(assetUrls.skinTexture(skinIdOrDefault(equipped?.skinId))))
+        .then((texture) => ({ kind: 'skin', texture })),
     )
 
     // Body parts: fetch only real ids; a missing slot resets to the base geometry.

@@ -88,6 +88,8 @@ export function makeArm(side) {
   const sleeve = add(handGeo.sleeve, sleeveMat, [0, 0, 0.032])
   add(handGeo.sleeveCuff, cuffMat, [0, 0, 0.045])
   arm.userData.sleeve = sleeve
+  // The stock glove and sleeve, hidden while the player's Bloxity arm is on (bloxArms.js).
+  arm.userData.parts = [...arm.children]
   return arm
 }
 
@@ -104,6 +106,8 @@ export function placeArm(arm, wrist, elbow) {
   const sleeve = arm.userData.sleeve
   const len = _toElbow.copy(elbow).sub(wrist).length()
   sleeve.scale.set(1, 1, Math.max(0.05, len - 0.032))
+  // A Bloxity arm (bloxArms.js) runs from just past the wrist to the elbow.
+  for (const mesh of arm.userData.blox ?? []) mesh.scale.z = Math.max(0.05, len + arm.userData.bloxReach)
   // Object3D.lookAt points +Z at the target.
   arm.lookAt(_target.copy(elbow))
 }

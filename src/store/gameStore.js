@@ -84,6 +84,19 @@ function loadClasses() {
   return [...PRESET_CLASSES.map((c) => storedClass(c.id, sanitizeClass(c), true)), ...custom]
 }
 
+/**
+ * Saved settings over the defaults. Low became everyone's starting quality:
+ * saves from before that start on Low once, and whatever the player picks
+ * after that (it's saved with defaultsVersion 2) sticks.
+ */
+function loadSettings() {
+  const saved = read(LS.settings, {})
+  const settings = { ...DEFAULT_SETTINGS, ...saved }
+  delete settings.qualityDetected
+  if ((saved.defaultsVersion ?? 1) < 2) Object.assign(settings, { quality: 'low', defaultsVersion: 2 })
+  return settings
+}
+
 export const DEFAULT_SETTINGS = Object.freeze({
   sensitivity: 1.0,
   adsSensitivity: 0.8,
@@ -92,12 +105,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
   showFps: false,
   minimap: true,
   invertY: false,
-  /** low | medium | high: render scale, shadows, colour grade, dust. */
-  quality: 'high',
-  /** Pick the quality for this machine (and drop it if the frame rate can't keep up). */
+  /** low | medium | high: render scale, shadows, colour grade, dust. Everyone starts on Low. */
+  quality: 'low',
+  /** Drop a quality level if the frame rate can't keep up (it never raises it). */
   qualityAuto: true,
-  /** Set once the first-run GPU check has chosen a quality. */
-  qualityDetected: false,
+  /** Bumped when a default changes for everyone (see loadSettings). */
+  defaultsVersion: 2,
   musicVolume: 0.3,
   /** Lower the render scale automatically when the frame rate drops. */
   adaptive: true,
@@ -153,7 +166,7 @@ export const useGameStore = create((set, get) => ({
   roomCode: '',
   maxPlayers: 8,
   connection: { status: 'idle', error: '' },
-  settings: { ...DEFAULT_SETTINGS, ...read(LS.settings, {}) },
+  settings: loadSettings(),
 
   /** Throttled plain copy of the room state for scoreboards and lists. */
   room: {

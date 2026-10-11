@@ -25,9 +25,11 @@ import {
 import { RELOAD_KEYS } from '../../audio/bank.js'
 import { sfx } from '../../audio/sfx.js'
 import { ColorGrade } from '../ColorGrade.js'
+import { useBloxityStore } from '../../bloxity/store.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { createWeaponModel, weaponMaterials } from '../models/weaponModels.js'
 import { makeArm, placeArm } from './arms.js'
+import { buildBloxArms, dressArm } from './bloxArms.js'
 import { runtime } from '../runtime.js'
 import { SUN_DIR } from '../environment.js'
 import { flareTexture } from '../world/textures.js'
@@ -78,8 +80,8 @@ const SHELL_KIND = { ar: 'rifle', lmg: 'rifle', sniper: 'sniper', shotgun: 'shot
 /** Guns are modelled at real size; this keeps them from filling the screen. */
 const VM_SCALE = 0.6
 const GRIP = new Vector3(0, -0.06, 0.06)
-const ELBOW_R = new Vector3(0.22, -0.34, 0.06)
-const ELBOW_L = new Vector3(-0.18, -0.34, -0.02)
+const ELBOW_R = new Vector3(0.2, -0.44, -0.04)
+const ELBOW_L = new Vector3(-0.17, -0.42, -0.08)
 const ELBOW_L_REACH = new Vector3(-0.3, -0.3, -0.2)
 
 const _b = new Vector3()
@@ -496,6 +498,23 @@ export function ViewModel() {
     vm.camera.updateProjectionMatrix()
   }, [size, vm])
 
+  // The hands on the gun are the player's own Bloxity arms (skin, shirt sleeves,
+  // gloves), rebuilt whenever they change their avatar.
+  const equipped = useBloxityStore((s) => s.equipped)
+  useEffect(() => {
+    let cancelled = false
+    buildBloxArms(equipped).then((arms) => {
+      if (cancelled || !arms) return
+      dressArm(vm.armL, arms.L)
+      dressArm(vm.armR, arms.R)
+      // A blocky hand holds a grenade at its end rather than in a palm.
+      for (const g of Object.values(vm.grenades)) g.position.set(0, 0.006, -0.072)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [vm, equipped])
+
   const lastWeapon = useRef('')
 
   useFrame((_s, delta) => {
@@ -639,7 +658,7 @@ export function ViewModel() {
       const lift = Math.min(1, tilt * 1.6)
       p.y += 0.075 * lift
       p.x -= 0.07 * lift
-      p.z += 0.04 * lift
+      p.z -= 0.035 * lift
       rz -= 0.7 * lift
       rxx += 0.18 * lift
       ry += 0.12 * lift
