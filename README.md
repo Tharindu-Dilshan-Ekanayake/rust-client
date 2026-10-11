@@ -98,6 +98,17 @@ the matchmaker seats them on the same server.
 | B | Change class (applies next spawn) |
 | Tab / Esc | Scoreboard / menu (the match keeps running) |
 
+## Your Bloxity avatar
+
+Other players see your Bloxity avatar: body parts, the skin texture with your
+shirt, pants and face drawn on (`skinTextureUrl`, the same URL the SDK's
+`getSkinTextureUrl()` builds), hat and back items. In first person the hands on
+the gun, and on ladders, are your own avatar's arms (`game/player/bloxArms.js`):
+the arm part you wear in your skin texture, so the sleeves match your shirt,
+with your hand accessory (gloves...) on the hands. Both update when you change
+your avatar in the portal. There's no login or logout in the game: it opens
+signed in to your Bloxity account, or as a Bloxity guest.
+
 ## Private matches
 
 Play → *Create a room* picks TDM or FFA, the size (1v1 to 4v4 / 2 to 8 players)
@@ -156,9 +167,10 @@ the frame rate drops below ~45 FPS.
 
 Built to run smoothly on low-end PCs without hitches:
 
-- **Auto quality** (Settings, on by default) picks Low / Medium / High from the
-  GPU and CPU on first run, and drops a level if the frame rate stays under ~40
-  even at the lowest render scale. *Auto resolution* trims the render scale first.
+- Everyone starts on **Low** (older saves move to it once; a player's own pick
+  sticks). **Auto quality** (on by default) drops a level if the frame rate stays
+  under ~40 even at the lowest render scale. *Auto resolution* trims the render
+  scale first.
 - **Low**: no sun shadows, no colour grade, fewer dust particles. **Medium**:
   shadows redrawn every other frame, 2x MSAA on the grade. **High**: everything.
 - A full match (7 other players) is ~130–160 draw calls on High, down from ~580:

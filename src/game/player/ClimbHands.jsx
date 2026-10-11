@@ -1,9 +1,11 @@
 import { useFrame } from '@react-three/fiber'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Group, Vector3 } from 'three'
 
+import { useBloxityStore } from '../../bloxity/store.js'
 import { runtime } from '../runtime.js'
 import { makeArm, placeArm } from './arms.js'
+import { buildBloxArms, dressArm } from './bloxArms.js'
 
 /**
  * First-person hands on a ladder. They're drawn in the world (not the
@@ -28,8 +30,22 @@ export function ClimbHands() {
     const right = makeArm(1)
     group.add(left, right)
     group.visible = false
-    return { group, arms: [[left, -1, 0], [right, 1, 1]] }
+    return { group, left, right, arms: [[left, -1, 0], [right, 1, 1]] }
   }, [])
+
+  // The same Bloxity arms as on the gun.
+  const equipped = useBloxityStore((s) => s.equipped)
+  useEffect(() => {
+    let cancelled = false
+    buildBloxArms(equipped).then((arms) => {
+      if (cancelled || !arms) return
+      dressArm(rig.left, arms.L)
+      dressArm(rig.right, arms.R)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [rig, equipped])
 
   useFrame(({ camera }) => {
     const l = runtime.local
