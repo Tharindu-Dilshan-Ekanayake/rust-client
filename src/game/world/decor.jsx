@@ -14,7 +14,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { buildColliders, MAP_HALF, POWER_LINES } from '../../shared/map.js'
 import { rotate3, seededRandom } from '../../shared/math.js'
-import { cylGeo, materials } from './materials.js'
+import { cylGeo, instancedVariant, materials } from './materials.js'
 import { Box, Cyl } from './parts.jsx'
 import { shrubTexture, softDotTexture } from './textures.js'
 
@@ -256,7 +256,7 @@ export function Decor({ seed, shrubs, pebbles }) {
   return (
     <group>
       <instancedMesh ref={setShrubs} args={[shrubGeo, shrubMat, layout.shrubs.length]} />
-      <instancedMesh ref={setPebbles} args={[pebbleGeo, materials.rock(), layout.pebbles.length]} receiveShadow />
+      <instancedMesh ref={setPebbles} args={[pebbleGeo, instancedVariant(materials.rock()), layout.pebbles.length]} receiveShadow />
     </group>
   )
 }

@@ -99,8 +99,9 @@ const fragmentShader = /* glsl */ `
 `
 
 export class ColorGrade {
-  constructor() {
-    this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 })
+  /** `samples`: MSAA on the HDR target (4 on High, 2 below: much cheaper on integrated GPUs). */
+  constructor({ samples = 4 } = {}) {
+    this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples })
     this.material = new ShaderMaterial({
       vertexShader,
       fragmentShader,

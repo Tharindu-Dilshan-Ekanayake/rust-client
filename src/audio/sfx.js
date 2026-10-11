@@ -90,7 +90,7 @@ function ensure() {
   musicGain.gain.value = 0
   musicGain.connect(master)
 
-  buildBank(ctx).then((b) => (bank = b))
+  startBank(ctx)
   renderMusic(ctx.sampleRate)
     .then((buffer) => {
       musicBuffer = buffer
@@ -103,6 +103,46 @@ function ensure() {
   const data = noiseBuffer.getChannelData(0)
   for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
   return ctx
+}
+
+/**
+ * Fills the sound bank from a worker (so rendering it never stutters the game),
+ * a sound at a time; anything not ready yet falls back to the live synth.
+ */
+function startBank(c) {
+  bank = new Map()
+  const fallback = () =>
+    buildBank(c).then((b) => {
+      for (const [k, v] of b) bank.set(k, v)
+    })
+  let worker = null
+  try {
+    worker = new Worker(new URL('./bankWorker.js', import.meta.url), { type: 'module' })
+  } catch {
+    fallback()
+    return
+  }
+  worker.onmessage = (e) => {
+    const { name, variants, sampleRate, done } = e.data
+    if (done) {
+      worker.terminate()
+      return
+    }
+    bank.set(
+      name,
+      variants.map((d) => {
+        const b = c.createBuffer(1, d.length, sampleRate)
+        b.copyToChannel(d, 0)
+        return b
+      }),
+    )
+  }
+  worker.onerror = (err) => {
+    console.warn('[audio] bank worker failed, rendering here instead', err.message)
+    worker.terminate()
+    fallback()
+  }
+  worker.postMessage('go')
 }
 
 /** Call from any user gesture: browsers keep audio suspended until one happens. */

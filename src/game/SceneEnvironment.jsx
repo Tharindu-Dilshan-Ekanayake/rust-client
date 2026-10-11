@@ -216,7 +216,7 @@ export function SceneEnvironment({ dust = true, quality = 'high' }) {
         position={sunPos.toArray()}
         color="#ffc88e"
         intensity={3.0}
-        castShadow
+        castShadow={quality !== 'low'}
         shadow-mapSize={[shadowSize, shadowSize]}
         shadow-camera-left={-46}
         shadow-camera-right={46}

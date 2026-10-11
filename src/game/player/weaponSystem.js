@@ -357,6 +357,8 @@ export class WeaponSystem {
     else this.tactical -= 1
     this.throwStart = now
     this.lastThrowKind = kind
+    // Tactical grenades are thrown straight off the button: pull their pin now.
+    if (kind !== 'frag') sfx.play('pin', { volume: 0.7 })
     this.cancelReload()
     sfx.play('throw', { volume: 0.8 })
   }
@@ -535,6 +537,8 @@ export class WeaponSystem {
       meleeIndex: this.meleeCount ?? 0,
       throw: now - this.throwStart < 0.45 ? (now - this.throwStart) / 0.45 : -1,
       cooking: this.cooking,
+      /** Seconds since the pin was pulled on a cooking frag (0 when not cooking). */
+      cookTime: this.cooking ? now - this.cookStart : 0,
       grenadeKind: this.cooking ? 'frag' : now - this.throwStart < 0.45 ? this.lastThrowKind ?? 'frag' : 'frag',
       bolt: (w.fireMode === 'bolt' || w.fireMode === 'pump') && now < this.boltUntil ? 1 - (this.boltUntil - now) / w.fireInterval : -1,
       // Shotgun reload: 0..1 through the current shell's insert, or -1.

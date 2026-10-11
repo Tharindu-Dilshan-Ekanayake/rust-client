@@ -227,14 +227,14 @@ export function SettingsPanel({ onBack }) {
       <span />
     </div>
   )
-  const choice = (key, label, options) => (
+  const choice = (key, label, options, extra = {}) => (
     <div className="dl-settings-row" key={key}>
       <span className="dl-label" style={{ color: 'var(--text)' }}>
         {label}
       </span>
       <div className="dl-seg">
         {options.map(([value, text]) => (
-          <button key={value} type="button" className={settings[key] === value ? 'on' : ''} onClick={() => setSettings({ [key]: value })}>
+          <button key={value} type="button" className={settings[key] === value ? 'on' : ''} onClick={() => setSettings({ [key]: value, ...extra })}>
             {text}
           </button>
         ))}
@@ -263,11 +263,17 @@ export function SettingsPanel({ onBack }) {
             Video
           </div>
           {slider('fov', 'Field of view', 65, 100, 1, (v) => `${v}°`)}
-          {choice('quality', 'Graphics quality', [
-            ['low', 'Low'],
-            ['medium', 'Med'],
-            ['high', 'High'],
-          ])}
+          {choice(
+            'quality',
+            'Graphics quality',
+            [
+              ['low', 'Low'],
+              ['medium', 'Med'],
+              ['high', 'High'],
+            ],
+            { qualityAuto: false },
+          )}
+          {toggle('qualityAuto', 'Auto quality')}
           {toggle('adaptive', 'Auto resolution')}
           {toggle('minimap', 'Minimap')}
           {toggle('showFps', 'Show FPS')}

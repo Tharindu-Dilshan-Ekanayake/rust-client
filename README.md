@@ -125,6 +125,23 @@ few hundred batches at load (`world/StaticBatcher.jsx`); Settings → Graphics
 quality picks shadow-map size, dust and render scale, and *Auto resolution*
 lowers the render scale when the frame rate drops below ~45 FPS.
 
+## Performance
+
+Built to run smoothly on low-end PCs without hitches:
+
+- **Auto quality** (Settings, on by default) picks Low / Medium / High from the
+  GPU and CPU on first run, and drops a level if the frame rate stays under ~40
+  even at the lowest render scale. *Auto resolution* trims the render scale first.
+- **Low**: no sun shadows, no colour grade, fewer dust particles. **Medium**:
+  shadows redrawn every other frame, 2x MSAA on the grade. **High**: everything.
+- The map is merged into a few hundred static batches whose matrices are frozen,
+  and every solid shadow caster is merged again into one depth-only proxy per
+  32 m cell, so the shadow pass is a handful of draw calls.
+- Shaders are compiled and textures uploaded ahead of time (menus, joining,
+  quality changes), including the weapons for both the world and the viewmodel,
+  so the first spawn, shot or grenade doesn't freeze the game.
+- The sound bank is synthesised in a Web Worker, off the main thread.
+
 ## Dev tools
 
 - `/?preview=map` — orbit the map; pin a view with `&cam=x,y,z&look=x,y,z`.

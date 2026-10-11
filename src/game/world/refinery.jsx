@@ -211,7 +211,7 @@ export function Refinery(r) {
       <Cyl r={0.28} h={2.6} position={[tw.x0 + 1.6, tw.top + 1.3, tw.z0 + 0.6]} material={materials.rust()} />
       <Cyl r={0.11} h={5.6} position={[tw.x1 - 0.12, tw.top + 2.8, tw.z0 + 0.12]} material={materials.steelDark()} />
       <Cyl r={0.2} h={0.35} position={[tw.x1 - 0.12, flareTop, tw.z0 + 0.12]} material={materials.rust()} />
-      <sprite ref={flame} material={flameMat} position={[tw.x1 - 0.12, flareTop + 0.9, tw.z0 + 0.12]} />
+      <sprite ref={flame} userData={{ dynamic: true }} material={flameMat} position={[tw.x1 - 0.12, flareTop + 0.9, tw.z0 + 0.12]} />
 
       {/* Tank platform: grating deck and the silver tank. */}
       <Box size={[pf.x1 - pf.x0, 0.2, pf.z1 - pf.z0]} position={[(pf.x0 + pf.x1) / 2, pf.top - 0.1, (pf.z0 + pf.z1) / 2]} material={materials.grate()} tile={1.5} />

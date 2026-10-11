@@ -9,6 +9,8 @@
  */
 
 const SR = 44100
+/** Sample rate the bank is rendered at (AudioBuffers resample on playback). */
+export const BANK_SAMPLE_RATE = SR
 
 /* ---------------------------------------------------------------------------
  * DSP building blocks
@@ -362,6 +364,55 @@ function clank(out, rand, { start = 0, base = 1400, tau = 0.06, gain = 1, knock 
   metalLayer(out, rand, { start, base: base * (0.96 + rand() * 0.08), partials: [1, 1.47, 2.09, 2.56, 3.18, 3.91, 4.8], tau, gain: gain * 0.7 * ring })
 }
 
+/** Hard contact: a broadband crack well under a millisecond (what makes a hit sound hard and close). */
+function contact(out, rand, start, gain, bright = 3000) {
+  noiseLayer(out, rand, { start, dur: 0.004, tau: 0.0005, att: 0.00002, type: 'highpass', freq: bright, gain: gain * 2 })
+}
+
+/** Hollow body resonance: a short, damped band of noise (a polymer mag, the receiver, a palm on it). */
+function body(out, rand, start, freq, q, tau, gain) {
+  noiseLayer(out, rand, { start, dur: tau * 7, tau, att: 0.0004, type: 'bandpass', freq, q, gain: gain * 3 })
+}
+
+const RING_RATIOS = [1, 1.52, 2.11, 2.73, 3.42, 4.18, 5.07, 6.1]
+
+/** A small steel part ringing: dense inharmonic modes, the high ones dying first. */
+function ring(out, rand, start, base, tau, gain, modes = 6) {
+  for (let k = 0; k < modes; k++) {
+    toneLayer(out, { start, dur: tau * 5, tau: tau / (1 + k * 0.45), att: 0.0002, from: base * RING_RATIOS[k] * (0.97 + rand() * 0.06), gain: gain / (1 + k * 0.5) })
+  }
+}
+
+/**
+ * Stick-slip friction: a part dragged along metal or polymer. Real sliding
+ * isn't smooth noise but a fast run of tiny grabs, which is what makes a
+ * magazine or a bolt sound like it's scraping along a rail.
+ */
+function friction(out, rand, { start = 0, dur, from, to = from, rate = 150, gain = 1, q = 1.4 }) {
+  const flt = new Biquad('bandpass', from, q)
+  const n0 = Math.floor(start * SR)
+  const len = Math.floor(dur * SR)
+  let phase = 0
+  let speed = 1
+  for (let i = 0; i < len && n0 + i < out.length; i++) {
+    const t = i / SR
+    if (i % 32 === 0) {
+      flt.set(from * Math.pow(to / from, t / dur))
+      speed = 0.75 + rand() * 0.5
+    }
+    phase += (rate * speed) / SR
+    const grab = Math.exp(-(phase % 1) * 9)
+    const env = Math.pow(Math.sin(Math.PI * Math.min(1, t / dur)), 0.6)
+    out[n0 + i] += flt.run(rand() * 2 - 1) * env * (0.3 + 0.7 * grab) * gain * 2.5
+  }
+}
+
+/** A spring under load letting go: a short wiry twang. */
+function spring(out, start, freq, tau, gain) {
+  toneLayer(out, { start, dur: tau * 6, tau, att: 0.0005, from: freq * 1.08, to: freq, glide: tau * 2, gain, wave: 'tri' })
+  toneLayer(out, { start, dur: tau * 4, tau: tau * 0.6, att: 0.0005, from: freq * 2.71, gain: gain * 0.35 })
+}
+
 /** Loose small parts: a quick run of tiny metallic ticks (springs, rounds in a mag). */
 function rattle(out, rand, start, span, count, gain) {
   for (let i = 0; i < count; i++) {
@@ -379,93 +430,138 @@ function grains(out, rand, start, span, count, lo, hi, gain) {
 
 const FOLEY = {
   magRelease: (r) => {
-    const o = buf(0.15)
-    clickLayer(o, r, { freq: 4200, gain: 0.8 })
-    clank(o, r, { start: 0.008, base: 2700, tau: 0.02, gain: 0.45, knock: 1400 })
+    // Thumb on the release button, then the catch letting go of the mag.
+    const o = buf(0.14)
+    contact(o, r, 0, 0.35, 4000)
+    body(o, r, 0.001, 2200, 4, 0.004, 0.35)
+    contact(o, r, 0.008, 0.5)
+    ring(o, r, 0.008, 2600, 0.012, 0.22, 4)
+    friction(o, r, { start: 0.012, dur: 0.05, from: 1800, to: 2600, rate: 200, gain: 0.3 })
     return o
   },
   magOut: (r) => {
-    const o = buf(0.4)
-    // Mag slides out of the well, rounds shifting inside, and clears with a clack.
-    scrape(o, r, 0, 0.1, 1400, 2600, 0.65)
-    rattle(o, r, 0.02, 0.08, 4, 0.25)
-    clank(o, r, { start: 0.1, base: 1700, tau: 0.045, gain: 0.75, knock: 900 })
+    // Out of the well: the drag along the walls, rounds shifting, a knock as it clears.
+    const o = buf(0.36)
+    friction(o, r, { dur: 0.085, from: 1500, to: 2800, rate: 160, gain: 0.75 })
+    rattle(o, r, 0.01, 0.08, 5, 0.22)
+    contact(o, r, 0.085, 0.4)
+    body(o, r, 0.085, 900, 2.5, 0.01, 0.5)
+    ring(o, r, 0.087, 1900, 0.02, 0.2, 5)
+    return o
+  },
+  magDrop: (r) => {
+    // The empty mag landing in the sand: a dull thud, grit, the follower rattling, a little bounce.
+    const o = buf(0.5)
+    body(o, r, 0, 220, 0.9, 0.03, 1)
+    grains(o, r, 0.002, 0.06, 18, 2500, 6500, 0.25)
+    rattle(o, r, 0.01, 0.12, 6, 0.3)
+    body(o, r, 0.11, 300, 1.2, 0.015, 0.35)
     return o
   },
   magPouch: (r) => {
-    const o = buf(0.35)
-    noiseLayer(o, r, { dur: 0.25, tau: 0.08, att: 0.04, freq: 900, freqTo: 600, gain: 0.5 })
-    rattle(o, r, 0.06, 0.12, 5, 0.3)
-    clank(o, r, { start: 0.16, base: 1500, tau: 0.03, gain: 0.35, knock: 800 })
+    // Velcro tearing open, the mag dragged out of cordura, knocking the kit.
+    const o = buf(0.45)
+    grains(o, r, 0, 0.12, 40, 1800, 5200, 0.35)
+    noiseLayer(o, r, { dur: 0.3, tau: 0.08, att: 0.03, freq: 1200, gain: 0.5 })
+    friction(o, r, { start: 0.12, dur: 0.1, from: 900, to: 1400, rate: 90, gain: 0.4 })
+    body(o, r, 0.22, 700, 2, 0.01, 0.3)
+    rattle(o, r, 0.2, 0.06, 3, 0.15)
     return o
   },
   magIn: (r) => {
-    const o = buf(0.45)
-    // Into the well, then seated hard: the loudest, most metallic part of a reload.
-    scrape(o, r, 0, 0.06, 1700, 2700, 0.55)
-    clank(o, r, { start: 0.062, base: 1150, tau: 0.075, gain: 1.2, knock: 620 })
-    clickLayer(o, r, { start: 0.07, freq: 3200, q: 3, tau: 0.003, gain: 0.9 })
-    thump(o, r, 0.062, 260, 0.016, 0.7)
+    // Up the well, then seated hard: the catch snaps in ("shk-CLACK"), the
+    // loudest and most metallic part of a reload. The seat lands at 60 ms.
+    const o = buf(0.42)
+    friction(o, r, { dur: 0.06, from: 1600, to: 3000, rate: 170, gain: 0.8 })
+    contact(o, r, 0.06, 1, 2500)
+    body(o, r, 0.06, 520, 2.2, 0.014, 1)
+    ring(o, r, 0.061, 2300, 0.035, 0.45, 6)
+    contact(o, r, 0.064, 0.5, 5000)
+    spring(o, 0.062, 1150, 0.015, 0.06)
+    rattle(o, r, 0.062, 0.03, 3, 0.15)
     return o
   },
   magTap: (r) => {
+    // A palm slapped on the baseplate to be sure.
     const o = buf(0.25)
-    thump(o, r, 0, 300, 0.014, 0.9)
-    clank(o, r, { start: 0.002, base: 950, tau: 0.035, gain: 0.5, knock: 520 })
+    body(o, r, 0, 360, 1.2, 0.012, 1)
+    noiseLayer(o, r, { dur: 0.03, tau: 0.004, att: 0.0005, freq: 900, gain: 0.6 })
+    contact(o, r, 0, 0.2)
+    rattle(o, r, 0.004, 0.03, 3, 0.12)
+    ring(o, r, 0.002, 1700, 0.015, 0.12, 4)
     return o
   },
   chargePull: (r) => {
-    const o = buf(0.35)
-    clickLayer(o, r, { freq: 3600, gain: 0.6 })
-    scrape(o, r, 0.008, 0.12, 2000, 3600, 0.7)
-    rattle(o, r, 0.02, 0.1, 5, 0.22)
-    clank(o, r, { start: 0.13, base: 1800, tau: 0.04, gain: 0.7, knock: 1000 })
+    // Unlatch, drag the carrier back against the buffer spring, hit the stop.
+    const o = buf(0.36)
+    contact(o, r, 0, 0.5, 3500)
+    ring(o, r, 0, 2900, 0.01, 0.2, 4)
+    friction(o, r, { start: 0.012, dur: 0.11, from: 2000, to: 3400, rate: 220, gain: 0.8 })
+    toneLayer(o, { start: 0.015, dur: 0.11, tau: 0.08, att: 0.01, from: 700, to: 1100, gain: 0.04, wave: 'tri' })
+    contact(o, r, 0.125, 0.6)
+    ring(o, r, 0.126, 1700, 0.03, 0.4, 6)
+    body(o, r, 0.125, 600, 2, 0.01, 0.4)
     return o
   },
   boltSlam: (r) => {
+    // The carrier slams home and the lugs lock: a hard crack, the whole gun
+    // thunking, steel ringing, the buffer spring humming after.
     const o = buf(0.5)
-    // Carrier slams home: a big clank, a second hit as it locks, the buffer spring humming.
-    clank(o, r, { base: 1300, tau: 0.09, gain: 1.35, knock: 650 })
-    clank(o, r, { start: 0.007, base: 2100, tau: 0.04, gain: 0.5, knock: 1200 })
-    thump(o, r, 0, 240, 0.02, 0.8)
-    toneLayer(o, { start: 0.004, dur: 0.3, tau: 0.06, from: 640, to: 600, gain: 0.08, wave: 'tri' })
+    contact(o, r, 0, 1.2, 2000)
+    body(o, r, 0, 420, 1.6, 0.02, 1.2)
+    ring(o, r, 0.001, 1450, 0.07, 0.8, 8)
+    contact(o, r, 0.006, 0.4)
+    ring(o, r, 0.007, 2650, 0.03, 0.35, 5)
+    spring(o, 0.004, 620, 0.06, 0.07)
+    rattle(o, r, 0.01, 0.05, 3, 0.12)
     return o
   },
   slideRelease: (r) => {
-    const o = buf(0.35)
-    clank(o, r, { base: 1900, tau: 0.055, gain: 1.2, knock: 900 })
-    clickLayer(o, r, { start: 0.004, freq: 3200, q: 3, tau: 0.004, gain: 0.8 })
+    // Slide stop down, the slide snapping forward onto a fresh round.
+    const o = buf(0.36)
+    contact(o, r, 0, 0.4, 4000)
+    friction(o, r, { start: 0.004, dur: 0.02, from: 2500, to: 1800, rate: 300, gain: 0.5 })
+    contact(o, r, 0.024, 1.1, 2200)
+    body(o, r, 0.024, 480, 1.8, 0.014, 0.9)
+    ring(o, r, 0.025, 1900, 0.05, 0.6, 7)
+    spring(o, 0.026, 820, 0.04, 0.06)
     return o
   },
   boltUp: (r) => {
-    const o = buf(0.18)
-    clickLayer(o, r, { freq: 2800, gain: 0.7 })
-    clank(o, r, { start: 0.003, base: 1600, tau: 0.025, gain: 0.45, knock: 1100 })
+    const o = buf(0.16)
+    contact(o, r, 0, 0.6, 3000)
+    ring(o, r, 0.001, 2600, 0.014, 0.3, 5)
+    friction(o, r, { start: 0.004, dur: 0.03, from: 2400, to: 2900, rate: 260, gain: 0.3 })
     return o
   },
   boltBack: (r) => {
     const o = buf(0.32)
-    scrape(o, r, 0, 0.16, 1700, 2900, 0.7)
-    clank(o, r, { start: 0.16, base: 1500, tau: 0.04, gain: 0.8, knock: 900 })
+    friction(o, r, { dur: 0.15, from: 1700, to: 3000, rate: 180, gain: 0.8 })
+    contact(o, r, 0.15, 0.7)
+    ring(o, r, 0.151, 1500, 0.035, 0.5, 6)
     return o
   },
   boltForward: (r) => {
-    const o = buf(0.35)
-    scrape(o, r, 0, 0.13, 2900, 1800, 0.7)
-    clank(o, r, { start: 0.13, base: 1300, tau: 0.05, gain: 1, knock: 750 })
+    const o = buf(0.36)
+    friction(o, r, { dur: 0.12, from: 3000, to: 1900, rate: 200, gain: 0.8 })
+    contact(o, r, 0.12, 1)
+    ring(o, r, 0.121, 1300, 0.05, 0.6, 7)
+    body(o, r, 0.12, 500, 1.8, 0.012, 0.6)
     return o
   },
   boltDown: (r) => {
     const o = buf(0.2)
-    clank(o, r, { base: 1250, tau: 0.04, gain: 0.9, knock: 700 })
-    thump(o, r, 0, 280, 0.012, 0.5)
+    contact(o, r, 0, 0.9, 2500)
+    body(o, r, 0, 600, 2, 0.01, 0.7)
+    ring(o, r, 0.001, 2200, 0.022, 0.35, 5)
     return o
   },
   cylinderOpen: (r) => {
     const o = buf(0.3)
-    clickLayer(o, r, { freq: 3400, gain: 0.8 })
-    scrape(o, r, 0.01, 0.08, 2600, 1900, 0.35)
-    clank(o, r, { start: 0.08, base: 1700, tau: 0.04, gain: 0.6, knock: 1000 })
+    contact(o, r, 0, 0.6, 3500)
+    friction(o, r, { start: 0.01, dur: 0.07, from: 2600, to: 1900, rate: 260, gain: 0.35 })
+    contact(o, r, 0.08, 0.7)
+    ring(o, r, 0.081, 1700, 0.04, 0.5, 6)
     return o
   },
   shellsDrop: (r) => {
@@ -478,48 +574,64 @@ const FOLEY = {
   },
   speedloader: (r) => {
     const o = buf(0.3)
-    scrape(o, r, 0, 0.06, 2000, 2500, 0.35)
+    friction(o, r, { dur: 0.06, from: 2000, to: 2500, rate: 240, gain: 0.4 })
     rattle(o, r, 0.02, 0.05, 6, 0.3)
-    clank(o, r, { start: 0.07, base: 2000, tau: 0.03, gain: 0.6, knock: 1100 })
+    contact(o, r, 0.07, 0.7)
+    ring(o, r, 0.071, 2000, 0.03, 0.4, 5)
     return o
   },
   cylinderClose: (r) => {
     const o = buf(0.35)
-    clank(o, r, { base: 1800, tau: 0.05, gain: 1.15, knock: 850 })
+    contact(o, r, 0, 1.1, 2200)
+    body(o, r, 0, 520, 1.8, 0.012, 0.8)
+    ring(o, r, 0.001, 1800, 0.05, 0.6, 7)
     return o
   },
   pumpBack: (r) => {
-    const o = buf(0.25)
-    clickLayer(o, r, { freq: 2400, gain: 0.5 })
-    scrape(o, r, 0.005, 0.08, 1500, 2400, 0.7)
-    clank(o, r, { start: 0.085, base: 1150, tau: 0.05, gain: 1, knock: 650 })
+    // Forend racked back: the action bars drag, the hull kicks out, the bolt hits the rear.
+    const o = buf(0.26)
+    contact(o, r, 0, 0.4)
+    friction(o, r, { start: 0.004, dur: 0.08, from: 1300, to: 2400, rate: 140, gain: 0.85 })
+    contact(o, r, 0.085, 0.9, 2200)
+    body(o, r, 0.085, 420, 1.6, 0.014, 0.8)
+    ring(o, r, 0.086, 1150, 0.045, 0.55, 7)
     return o
   },
   pumpForward: (r) => {
-    const o = buf(0.3)
-    scrape(o, r, 0, 0.07, 2400, 1600, 0.65)
-    clank(o, r, { start: 0.072, base: 1300, tau: 0.07, gain: 1.25, knock: 600 })
-    thump(o, r, 0.072, 250, 0.016, 0.6)
+    // ...and slammed forward: the bolt locks with the loudest clack of the cycle.
+    const o = buf(0.32)
+    friction(o, r, { dur: 0.07, from: 2400, to: 1500, rate: 150, gain: 0.8 })
+    contact(o, r, 0.072, 1.2, 2000)
+    body(o, r, 0.072, 380, 1.5, 0.018, 1.1)
+    ring(o, r, 0.073, 1250, 0.06, 0.7, 8)
+    spring(o, 0.075, 540, 0.04, 0.05)
     return o
   },
   shellInsert: (r) => {
+    // A shell thumbed past the lifter into the tube: brass on steel, a click.
     const o = buf(0.22)
-    scrape(o, r, 0, 0.04, 1800, 2600, 0.4)
-    clank(o, r, { start: 0.045, base: 2200, tau: 0.03, gain: 0.7, knock: 900 })
-    thump(o, r, 0.045, 320, 0.01, 0.45)
+    friction(o, r, { dur: 0.04, from: 1600, to: 2600, rate: 220, gain: 0.5 })
+    contact(o, r, 0.045, 0.8, 3000)
+    body(o, r, 0.045, 700, 2, 0.01, 0.5)
+    ring(o, r, 0.046, 2400, 0.02, 0.3, 5)
+    spring(o, 0.046, 1400, 0.012, 0.04)
     return o
   },
   lidOpen: (r) => {
-    const o = buf(0.35)
-    clickLayer(o, r, { freq: 3000, gain: 0.7 })
-    clank(o, r, { start: 0.04, base: 900, tau: 0.07, gain: 0.8, knock: 600 })
+    const o = buf(0.36)
+    contact(o, r, 0, 0.6, 3000)
+    spring(o, 0.004, 700, 0.05, 0.08)
+    ring(o, r, 0.04, 900, 0.06, 0.6, 7)
+    body(o, r, 0.04, 450, 1.5, 0.015, 0.5)
     return o
   },
   lidClose: (r) => {
-    const o = buf(0.4)
-    clank(o, r, { base: 820, tau: 0.08, gain: 1.3, knock: 520 })
-    clank(o, r, { start: 0.006, base: 1900, tau: 0.035, gain: 0.45, knock: 1100 })
-    thump(o, r, 0, 220, 0.02, 0.7)
+    const o = buf(0.42)
+    contact(o, r, 0, 1.2, 2000)
+    body(o, r, 0, 380, 1.4, 0.022, 1.1)
+    ring(o, r, 0.001, 820, 0.08, 0.8, 8)
+    contact(o, r, 0.015, 0.6, 4000)
+    ring(o, r, 0.016, 2400, 0.02, 0.3, 4)
     return o
   },
   beltLay: (r) => {
@@ -535,8 +647,9 @@ const FOLEY = {
   },
   rocketSeat: (r) => {
     const o = buf(0.35)
-    thump(o, r, 0, 200, 0.025, 1)
-    clank(o, r, { start: 0.003, base: 700, tau: 0.06, gain: 0.8, knock: 420 })
+    contact(o, r, 0, 0.7, 1800)
+    body(o, r, 0, 200, 1.2, 0.03, 1)
+    ring(o, r, 0.003, 700, 0.06, 0.5, 6)
     return o
   },
   hammer: (r) => {
@@ -727,16 +840,54 @@ const BIG = {
  * Building the bank
  * ------------------------------------------------------------------------- */
 
+/**
+ * Peak level per foley sound. Normalising them all to the same peak made a
+ * pouch rustle as loud as a bolt slamming home; real reloads go soft scrape,
+ * soft scrape, CLACK.
+ */
+const FOLEY_LEVEL = {
+  magRelease: 0.45,
+  magOut: 0.6,
+  magDrop: 0.45,
+  magPouch: 0.32,
+  magIn: 0.95,
+  magTap: 0.6,
+  chargePull: 0.7,
+  boltSlam: 1,
+  slideRelease: 0.9,
+  boltUp: 0.5,
+  boltBack: 0.65,
+  boltForward: 0.8,
+  boltDown: 0.7,
+  pumpBack: 0.8,
+  pumpForward: 0.95,
+  shellInsert: 0.6,
+  lidOpen: 0.6,
+  lidClose: 0.9,
+  beltLay: 0.45,
+  cylinderOpen: 0.6,
+  cylinderClose: 0.85,
+  speedloader: 0.6,
+  shellsDrop: 0.45,
+  rocketSlide: 0.6,
+  rocketSeat: 0.85,
+}
+
 /** name -> [render(seed) -> Float32Array], with how many variations to keep. */
+/** The bank as [name, variant count, render(seed) -> Float32Array], in the order they're needed (gunshots first). */
+export function bankRecipes() {
+  return recipes()
+}
+
 function recipes() {
   const list = []
   for (const [id, p] of Object.entries(GUNS)) list.push([id, 4, (s) => gunshot(p, s)])
   list.push(['suppressedRifle', 3, (s) => suppressed('rifle', s)])
   list.push(['suppressedPistol', 3, (s) => suppressed('pistol', s)])
   list.push(['suppressedSniper', 2, (s) => suppressed('sniper', s)])
-  const counts = { stepSand: 8, stepMetal: 4, ladderRung: 4, impact: 4, brass: 3, knifeSwing: 3, knifeHit: 2, breathIn: 2, breathOut: 2, magIn: 3, boltSlam: 3 }
+  const counts = { stepSand: 8, stepMetal: 4, ladderRung: 4, impact: 4, brass: 3, knifeSwing: 3, knifeHit: 2, breathIn: 2, breathOut: 2, magIn: 3, boltSlam: 3, magOut: 3, chargePull: 3 }
   for (const [name, fn] of Object.entries(FOLEY)) {
-    list.push([name, counts[name] ?? 2, (s) => finish(fn(rng(s)), { level: 0.85 })])
+    list.push([name, counts[name] ?? 2, (s) => finish(fn(rng(s)), { level: FOLEY_LEVEL[name] ?? 0.85 })])
   }
   for (const [name, fn] of Object.entries(BIG)) list.push([name, name.startsWith('distant') ? 3 : 2, (s) => fn(rng(s))])
   return list
@@ -764,35 +915,53 @@ export async function buildBank(ctx) {
 }
 
 /**
- * Reload foley per weapon, as (fraction of the reload time, sound). The
- * `empty` list adds the charging handle / slide / bolt at the end.
+ * Key moments of a magazine reload, as fractions of its length. The viewmodel
+ * animates from these and the foley below is cued from them, so the click is
+ * heard exactly when the mag seats. An empty reload is quicker through the
+ * mag change because it still has the charging handle (or slide) to work.
+ */
+export const RELOAD_KEYS = Object.freeze({
+  tactical: Object.freeze({ release: 0.08, out: 0.14, fallEnd: 0.34, pouch: 0.36, seat: 0.62, tap: 0.68 }),
+  empty: Object.freeze({ release: 0.05, out: 0.1, fallEnd: 0.26, pouch: 0.28, seat: 0.5, tap: 0.56, charge: 0.72, slam: 0.84 }),
+})
+
+/** magIn's seat lands 60 ms into the sound; with the reload's length known, cue it that early. */
+const SEAT_LEAD = 0.06
+/** The dropped mag hits the ground this long after it leaves the well. */
+const DROP_FALL = 0.34
+
+/** A magazine reload's foley from the keys: the mag change, then (empty) the bolt. */
+function magFoley(empty, { pouch = true, tap = true, bolt = 'carbine', drop = true } = {}) {
+  const k = RELOAD_KEYS[empty ? 'empty' : 'tactical']
+  const ev = [[k.release, 'magRelease'], [k.out, 'magOut'], [k.seat, 'magIn', SEAT_LEAD]]
+  if (pouch) ev.push([k.pouch, 'magPouch'])
+  if (tap) ev.push([k.tap, 'magTap'])
+  if (empty && drop) ev.push([k.out, 'magDrop', -DROP_FALL])
+  if (empty && bolt === 'carbine') ev.push([k.charge, 'chargePull'], [k.slam, 'boltSlam'])
+  if (empty && bolt === 'slide') ev.push([k.slam, 'slideRelease'])
+  return ev
+}
+
+/**
+ * Reload foley per weapon, as [fraction of the reload time, sound, lead in
+ * seconds]: the lead shifts a sound earlier (or later, if negative) so its
+ * key moment lands on the fraction.
  */
 export const RELOAD_FOLEY = {
-  ar: {
-    tactical: [[0.08, 'magRelease'], [0.13, 'magOut'], [0.36, 'magPouch'], [0.58, 'magIn'], [0.68, 'magTap']],
-    empty: [[0.06, 'magRelease'], [0.1, 'magOut'], [0.3, 'magPouch'], [0.5, 'magIn'], [0.58, 'magTap'], [0.76, 'chargePull'], [0.84, 'boltSlam']],
-  },
-  hornet: {
-    tactical: [[0.1, 'magRelease'], [0.15, 'magOut'], [0.55, 'magIn']],
-    empty: [[0.08, 'magRelease'], [0.12, 'magOut'], [0.48, 'magIn'], [0.74, 'chargePull'], [0.82, 'boltSlam']],
-  },
-  pistol: {
-    tactical: [[0.12, 'magRelease'], [0.16, 'magOut'], [0.6, 'magIn']],
-    empty: [[0.1, 'magRelease'], [0.14, 'magOut'], [0.52, 'magIn'], [0.8, 'slideRelease']],
-  },
-  smg: {
-    tactical: [[0.08, 'magRelease'], [0.14, 'magOut'], [0.55, 'magIn'], [0.64, 'magTap']],
-    empty: [[0.07, 'magRelease'], [0.12, 'magOut'], [0.46, 'magIn'], [0.54, 'magTap'], [0.74, 'chargePull'], [0.82, 'boltSlam']],
-  },
+  ar: { tactical: magFoley(false), empty: magFoley(true) },
+  hornet: { tactical: magFoley(false, { pouch: false, tap: false }), empty: magFoley(true, { pouch: false, tap: false }) },
+  pistol: { tactical: magFoley(false, { pouch: false, tap: false }), empty: magFoley(true, { pouch: false, tap: false, bolt: 'slide' }) },
+  smg: { tactical: magFoley(false, { pouch: false }), empty: magFoley(true, { pouch: false }) },
+  // Feed cover up, box swapped, belt laid on the tray, cover slammed (charged first when empty).
   lmg: {
-    tactical: [[0.05, 'lidOpen'], [0.14, 'magRelease'], [0.2, 'magOut'], [0.42, 'magPouch'], [0.56, 'magIn'], [0.68, 'beltLay'], [0.8, 'lidClose']],
-    empty: [[0.04, 'chargePull'], [0.1, 'lidOpen'], [0.18, 'magOut'], [0.4, 'magPouch'], [0.52, 'magIn'], [0.63, 'beltLay'], [0.74, 'lidClose'], [0.86, 'boltSlam']],
+    tactical: [[0.05, 'lidOpen'], [0.1, 'magRelease'], [0.14, 'magOut'], [0.36, 'magPouch'], [0.62, 'magIn', SEAT_LEAD], [0.72, 'beltLay'], [0.82, 'lidClose']],
+    empty: [[0.02, 'chargePull'], [0.07, 'lidOpen'], [0.11, 'magRelease'], [0.14, 'magOut'], [0.14, 'magDrop', -DROP_FALL], [0.36, 'magPouch'], [0.62, 'magIn', SEAT_LEAD], [0.72, 'beltLay'], [0.82, 'lidClose']],
   },
   rpg: {
     tactical: [[0.12, 'weaponRaise'], [0.42, 'rocketSlide'], [0.68, 'rocketSeat']],
   },
   sniper: {
-    tactical: [[0.06, 'boltUp'], [0.12, 'boltBack'], [0.3, 'magOut'], [0.58, 'magIn'], [0.8, 'boltForward'], [0.9, 'boltDown']],
+    tactical: [[0.03, 'boltUp'], [0.07, 'boltBack'], [0.14, 'magOut'], [0.62, 'magIn', SEAT_LEAD], [0.8, 'boltForward'], [0.9, 'boltDown']],
   },
   viper: {
     tactical: [[0.08, 'cylinderOpen'], [0.2, 'shellsDrop'], [0.55, 'speedloader'], [0.8, 'cylinderClose']],
@@ -814,5 +983,8 @@ export const reloadFoley = (weaponId, empty, duration = 0, shell = null) => {
   }
   const f = RELOAD_FOLEY[weaponId]
   if (!f) return []
-  return (empty && f.empty) || f.tactical
+  const list = (empty && f.empty) || f.tactical
+  // Leads are in seconds: without a duration, fall back to a typical reload.
+  const d = duration > 0 ? duration : 2.4
+  return list.map(([at, name, lead = 0]) => [Math.min(0.98, Math.max(0, at - lead / d)), name]).sort((p, q) => p[0] - q[0])
 }

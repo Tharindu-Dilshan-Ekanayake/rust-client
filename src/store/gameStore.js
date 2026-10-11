@@ -92,8 +92,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
   showFps: false,
   minimap: true,
   invertY: false,
-  /** low | medium | high: render scale, shadow resolution, dust. */
+  /** low | medium | high: render scale, shadows, colour grade, dust. */
   quality: 'high',
+  /** Pick the quality for this machine (and drop it if the frame rate can't keep up). */
+  qualityAuto: true,
+  /** Set once the first-run GPU check has chosen a quality. */
+  qualityDetected: false,
   musicVolume: 0.3,
   /** Lower the render scale automatically when the frame rate drops. */
   adaptive: true,

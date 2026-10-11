@@ -3,7 +3,7 @@ import { BufferGeometry, CircleGeometry, Float32BufferAttribute, Object3D, Plane
 
 import { CONTAINER, PIPE_CROSSINGS, PIPELINE, pipelinePieces, shackWallBoxes, WALL_LINE, yawOffset } from '../../shared/map.js'
 import { seededRandom } from '../../shared/math.js'
-import { boxGeo, CONTAINER_COLORS, cylGeo, materials } from './materials.js'
+import { boxGeo, CONTAINER_COLORS, cylGeo, instancedVariant, materials } from './materials.js'
 import { segmentTransform, useMerged } from './geometryUtils.js'
 import { Box, Cyl, Rod } from './parts.jsx'
 
@@ -494,7 +494,7 @@ export function Pipe({ a, b, r, open, material, joints = 6 }) {
         <mesh key={i} geometry={capGeo} material={open ? materials.pipeInside() : skin} position={c.p} quaternion={c.q} />
       ))}
       {flanges.length > 0 && <mesh geometry={ringGeo} material={materials.rust()} castShadow receiveShadow />}
-      {flanges.length > 0 && <instancedMesh args={[boltGeo, materials.steelDark(), flanges.length * BOLTS]} ref={setBolts} />}
+      {flanges.length > 0 && <instancedMesh args={[boltGeo, instancedVariant(materials.steelDark()), flanges.length * BOLTS]} ref={setBolts} />}
       {(open === 'a' || open === 'both') && <TornLip at={a} dir={[-dir.x, -dir.y, -dir.z]} r={r} seed={Math.round(a[0] * 31 + a[2] * 17)} material={skin} />}
       {(open === 'b' || open === 'both') && <TornLip at={b} dir={[dir.x, dir.y, dir.z]} r={r} seed={Math.round(b[0] * 29 + b[2] * 13)} material={skin} />}
     </group>
@@ -842,7 +842,7 @@ export function Perimeter() {
       <mesh geometry={hookGeo} material={materials.rust()} />
       <mesh geometry={frameGeo} material={materials.rust()} castShadow />
       <mesh geometry={meshGeo} material={materials.weldMesh()} castShadow />
-      <instancedMesh args={[coilGeo, materials.wire(), data.coils.length]} ref={setCoils} />
+      <instancedMesh args={[coilGeo, instancedVariant(materials.wire()), data.coils.length]} ref={setCoils} />
       {data.drifts.map((g, i) => (
         <mesh key={i} geometry={g} material={materials.sand()} receiveShadow />
       ))}

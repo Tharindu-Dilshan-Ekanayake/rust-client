@@ -18,9 +18,11 @@ import {
   Scene,
   Sprite,
   SpriteMaterial,
+  TorusGeometry,
   Vector3,
 } from 'three'
 
+import { RELOAD_KEYS } from '../../audio/bank.js'
 import { sfx } from '../../audio/sfx.js'
 import { ColorGrade } from '../ColorGrade.js'
 import { useGameStore } from '../../store/gameStore.js'
@@ -60,6 +62,17 @@ const POSES = {
 const HEAVY = { sniper: 2.4, viper: 2.1, pistol: 1.4, hornet: 0.75, smg: 0.8, shotgun: 2.2, lmg: 1.1, rpg: 2.6 }
 /** Muzzle-flash sprite size (rig units) per weapon. */
 const FLASH_SIZE = { sniper: 0.42, viper: 0.34, pistol: 0.22, hornet: 0.2, smg: 0.24, shotgun: 0.5, lmg: 0.36, rpg: 0.6 }
+/** Guns whose empty reload is quicker through the mag change and then works the action (see RELOAD_KEYS). */
+const EMPTY_ACTION = new Set(['ar', 'smg', 'hornet', 'pistol'])
+/** The charging handle each empty reload grabs (model space), and how far it travels back. */
+const CHARGE_POINT = {
+  ar: new Vector3(-0.012, 0.092, 0.135),
+  smg: new Vector3(-0.03, 0.06, 0.08),
+  hornet: new Vector3(-0.022, 0.058, 0.085),
+}
+const CHARGE_TRAVEL = { ar: 0.05, smg: 0.045, hornet: 0.04 }
+/** The off hand's elbow comes up and out to reach over the receiver. */
+const ELBOW_L_CHARGE = new Vector3(-0.25, -0.3, 0.05)
 /** Casing thrown out of the port per weapon (none for the launcher). */
 const SHELL_KIND = { ar: 'rifle', lmg: 'rifle', sniper: 'sniper', shotgun: 'shotgun', smg: 'pistol', pistol: 'pistol', hornet: 'pistol' }
 /** Guns are modelled at real size; this keeps them from filling the screen. */
@@ -85,6 +98,108 @@ function pumpStroke(k, b0, b1, f0, f1) {
 }
 
 const smooth = (t) => t * t * (3 - 2 * t)
+
+/* ---------------------------------------------------------------------------
+ * Grenade throw (camera space). Cooking: the off hand brings the grenade up,
+ * the pin pops, and the arm winds back up by the shoulder and holds there.
+ * Throwing: finish the wind-up if it wasn't (a quick tap, or a tactical), then
+ * an overhand whip forward, release, follow-through across the body, and the
+ * arm drops away.
+ * ------------------------------------------------------------------------- */
+
+const T_LOW = new Vector3(-0.16, -0.34, -0.28)
+const T_CHEST = new Vector3(-0.1, -0.13, -0.3)
+const T_WIND = new Vector3(-0.2, 0.03, -0.25)
+const T_RELEASE = new Vector3(-0.05, 0.07, -0.52)
+const T_FOLLOW = new Vector3(0.07, -0.2, -0.38)
+const E_WIND = new Vector3(-0.42, -0.1, 0.02)
+const E_FWD = new Vector3(-0.25, -0.22, -0.1)
+const _tw = new Vector3()
+const _te = new Vector3()
+
+function throwPose(vm, a) {
+  const t = vm.throwState
+  const throwing = a.throw >= 0
+  if (!a.cooking && !throwing) {
+    t.pin = false
+    t.started = false
+    return { active: false, grenade: false }
+  }
+  const popPin = () => {
+    if (t.pin) return
+    t.pin = true
+    const g = vm.grenades[a.grenadeKind ?? 'frag']
+    if (g) ejectShell(vm, g, 'pin')
+  }
+  if (a.cooking) {
+    const c = a.cookTime ?? 0
+    if (c < 0.14) {
+      _tw.lerpVectors(T_LOW, T_CHEST, smooth(c / 0.14))
+      _te.copy(ELBOW_L)
+    } else if (c < 0.2) {
+      popPin()
+      _tw.copy(T_CHEST)
+      _te.copy(ELBOW_L)
+    } else {
+      popPin()
+      const w = smooth(Math.min(1, (c - 0.2) / 0.2))
+      _tw.lerpVectors(T_CHEST, T_WIND, w)
+      _te.lerpVectors(ELBOW_L, E_WIND, w)
+      // Holding a live grenade: the arm can't keep quite still.
+      if (w >= 1) _tw.y += Math.sin(c * 9) * 0.003
+    }
+    t.wind = c < 0.2 ? 0 : Math.min(1, (c - 0.2) / 0.2)
+    t.from.copy(_tw)
+    t.fromElbow.copy(_te)
+    t.cooked = true
+    t.started = false
+    return { active: true, grenade: true, wrist: _tw, elbow: _te }
+  }
+
+  // Throwing.
+  if (!t.started) {
+    t.started = true
+    t.released = false
+    if (!t.cooked) {
+      t.from.copy(T_LOW)
+      t.fromElbow.copy(ELBOW_L)
+      t.wind = 0
+    }
+    t.cooked = false
+    popPin()
+  }
+  const k = a.throw
+  const wu = 0.3 * (1 - t.wind)
+  const swing = 0.18
+  const follow = 0.2
+  if (k < wu) {
+    const f = smooth(k / wu)
+    _tw.lerpVectors(t.from, T_WIND, f)
+    _te.lerpVectors(t.fromElbow, E_WIND, f)
+  } else if (k < wu + swing) {
+    // Accelerating overhand arc, peaking just before the release.
+    const f = (k - wu) / swing
+    const e = f * f
+    _tw.lerpVectors(T_WIND, T_RELEASE, e)
+    _tw.y += Math.sin(e * Math.PI) * 0.07
+    _te.lerpVectors(E_WIND, E_FWD, e)
+    if (f > 0.75 && !t.released) {
+      t.released = true
+      // The weight of it leaving the hand.
+      runtime.view.shake = Math.min(1, runtime.view.shake + 0.08)
+    }
+  } else if (k < wu + swing + follow) {
+    const f = smooth((k - wu - swing) / follow)
+    _tw.lerpVectors(T_RELEASE, T_FOLLOW, f)
+    _te.lerpVectors(E_FWD, ELBOW_L, f)
+    t.released = true
+  } else {
+    const f = smooth((k - wu - swing - follow) / (1 - wu - swing - follow))
+    _tw.lerpVectors(T_FOLLOW, T_LOW, f)
+    _te.copy(ELBOW_L)
+  }
+  return { active: true, grenade: !t.released, wrist: _tw, elbow: _te }
+}
 const KNIFE_VIEW_SCALE = 1.3
 const TRAIL_POINTS = 14
 
@@ -190,16 +305,17 @@ function ejectShell(vm, eject, kind) {
   eject.getWorldPosition(_shellPos)
   vm.camera.worldToLocal(_shellPos)
   s.mesh.geometry = vm.shellGeos[kind]
-  s.mesh.material = kind === 'shotgun' ? weaponMaterials.red : weaponMaterials.brass
+  s.mesh.material = kind === 'shotgun' ? weaponMaterials.red : kind === 'pin' ? weaponMaterials.steel : weaponMaterials.brass
   s.mesh.position.copy(_shellPos)
   s.mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0)
   const up = kind === 'pistol' ? 1.35 : kind === 'shotgun' ? 0.8 : 1
-  s.vel.set(0.85 + Math.random() * 0.5, (0.9 + Math.random() * 0.5) * up, 0.18 + Math.random() * 0.25)
+  if (kind === 'pin') s.vel.set(-0.35 - Math.random() * 0.3, 0.55 + Math.random() * 0.3, 0.1)
+  else s.vel.set(0.85 + Math.random() * 0.5, (0.9 + Math.random() * 0.5) * up, 0.18 + Math.random() * 0.25)
   s.spin.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 20)
   s.life = 0.75
   s.mesh.visible = true
   // A tinkle as it lands, not for every round of a long burst.
-  if (vm.shotCount++ % 2 === 0) setTimeout(() => sfx.play('brass', { volume: 0.22 }), 380 + Math.random() * 120)
+  if (kind !== 'pin' && vm.shotCount++ % 2 === 0) setTimeout(() => sfx.play('brass', { volume: 0.22 }), 380 + Math.random() * 120)
 }
 
 function updateShells(vm, dt) {
@@ -267,6 +383,7 @@ export function ViewModel() {
       pistol: new CylinderGeometry(0.0027, 0.0027, 0.0125, 10).rotateX(Math.PI / 2),
       sniper: new CylinderGeometry(0.0039, 0.0036, 0.042, 10).rotateX(Math.PI / 2),
       shotgun: new CylinderGeometry(0.0095, 0.0095, 0.05, 12).rotateX(Math.PI / 2),
+      pin: new TorusGeometry(0.011, 0.0022, 6, 14),
     }
     const shells = Array.from({ length: 14 }, () => {
       const mesh = new Mesh(shellGeos.rifle, weaponMaterials.brass)
@@ -336,6 +453,7 @@ export function ViewModel() {
       shotCount: 0,
       lastBolt: -1,
       lastRack: -1,
+      throwState: { pin: false, started: false, released: false, cooked: false, wind: 0, from: new Vector3(), fromElbow: new Vector3() },
       drum: 0,
       drumTarget: 0,
       lastSince: 1,
@@ -357,6 +475,12 @@ export function ViewModel() {
   const lastWeapon = useRef('')
 
   useFrame((_s, delta) => {
+    // Reflections from the start (not just once the gun is first shown), so the
+    // shaders warmed up in the menu are the ones gameplay uses.
+    if (runtime.envMap && vm.scene.environment !== runtime.envMap) {
+      vm.scene.environment = runtime.envMap
+      vm.scene.environmentIntensity = 0.95
+    }
     const dt = Math.min(delta, 0.05)
     const a = runtime.vmState
     const game = useGameStore.getState()
@@ -367,10 +491,6 @@ export function ViewModel() {
     if (!vm.visible) {
       vm.flashLight.intensity = 0
       return
-    }
-    if (runtime.envMap && vm.scene.environment !== runtime.envMap) {
-      vm.scene.environment = runtime.envMap
-      vm.scene.environmentIntensity = 0.95
     }
 
     const id = a.weapon
@@ -436,6 +556,9 @@ export function ViewModel() {
     }
     /** 0..1 how far the off hand is reaching for / holding the magazine. */
     let magHand = 0
+    /** Empty reload: 0..1 how far the off hand is on the charging handle, and how far it's pulled back. */
+    let chargeHand = 0
+    let chargePull = 0
     /** Shotgun: shell-by-shell reload progress (see weaponSystem.shellPhase), or null. */
     let shellHand = null
     /** Launcher: 0..1 how far the off hand is on the fresh rocket. */
@@ -484,6 +607,8 @@ export function ViewModel() {
       }
     } else if (a.reload >= 0) {
       const rl = Math.min(1, a.reload)
+      // The same key moments the reload sounds are cued from (audio/bank.js).
+      const keys = RELOAD_KEYS[a.empty && EMPTY_ACTION.has(id) ? 'empty' : 'tactical']
       // Bring the gun up toward the middle and roll it so the magwell faces the
       // off hand: the whole swap happens in view.
       const tilt = Math.sin(Math.min(1, rl * 1.1) * Math.PI)
@@ -495,30 +620,62 @@ export function ViewModel() {
       rxx += 0.18 * lift
       ry += 0.12 * lift
       if (mag) {
-        if (rl < 0.14) {
+        if (rl < keys.out) {
           // Thumb the release.
-          magHand = rl / 0.14
-        } else if (rl < 0.34) {
+          magHand = rl / keys.out
+        } else if (rl < keys.fallEnd) {
           // Empty mag falls out, tumbling.
-          const f = (rl - 0.14) / 0.2
+          const f = (rl - keys.out) / (keys.fallEnd - keys.out)
           mag.position.y -= 0.9 * f * f
           mag.position.z += 0.12 * f
           mag.rotation.x += 1.4 * f
           mag.visible = f < 0.95
           magHand = Math.max(0, 1 - f * 2)
-        } else if (rl < 0.62) {
+        } else if (rl < keys.seat) {
           // Fresh mag rises with the hand into the well.
-          const f = (rl - 0.34) / 0.28
+          const f = (rl - keys.fallEnd) / (keys.seat - keys.fallEnd)
           const e = f * f * (3 - 2 * f)
           mag.position.y -= 0.32 * (1 - e)
           mag.position.z -= 0.06 * (1 - e)
           mag.rotation.x -= 0.35 * (1 - e)
           magHand = 1
         } else {
-          // Seated: a quick slap jolts the gun, then the hand returns to the fore-end.
-          const f = (rl - 0.62) / 0.38
-          if (f < 0.12) rxx -= 0.06 * Math.sin((f / 0.12) * Math.PI)
-          magHand = Math.max(0, 1 - f * 3)
+          // Seated with a jolt; the palm slaps it home, then the hand goes back.
+          const seatJolt = (rl - keys.seat) / 0.045
+          if (seatJolt < 1) rxx -= 0.06 * Math.sin(seatJolt * Math.PI)
+          const slap = (rl - keys.tap) / 0.04
+          if (slap > 0 && slap < 1) rxx -= 0.035 * Math.sin(slap * Math.PI)
+          magHand = rl < keys.tap + 0.03 ? 1 : Math.max(0, 1 - (rl - keys.tap - 0.03) / 0.1)
+        }
+      }
+      // Empty: work the action. The off hand reaches the charging handle, rips
+      // it back, lets go, and the bolt slams home with a kick through the gun.
+      if (keys.charge && CHARGE_POINT[id]) {
+        const reach = keys.charge - 0.1
+        if (rl > reach && rl < keys.slam + 0.12) {
+          chargeHand = rl < keys.charge ? smooth((rl - reach) / 0.1) : rl < keys.slam ? 1 : 1 - smooth((rl - keys.slam) / 0.12)
+          // Ripped back fast, held a beat, then let go so the bolt runs home.
+          chargePull = rl >= keys.charge && rl < keys.slam - 0.02 ? smooth(Math.min(1, (rl - keys.charge) / 0.045)) : 0
+        }
+        // Swing the back of the receiver up into view and cant the top toward
+        // the off hand, so the pull reads instead of happening off screen.
+        const pose = rl < reach ? 0 : rl < keys.charge ? smooth((rl - reach) / 0.1) : rl < keys.slam ? 1 : 1 - smooth(Math.min(1, (rl - keys.slam) / 0.16))
+        p.x -= 0.015 * pose
+        p.y += 0.02 * pose
+        p.z -= 0.04 * pose
+        rz += 0.22 * pose
+        rxx -= 0.05 * pose
+        if (chargePull > 0) {
+          // The pull drags the whole gun back a touch.
+          p.z += 0.008 * chargePull
+          rz += 0.04 * chargePull
+        }
+      }
+      if (keys.slam) {
+        const kick = (rl - keys.slam) / 0.05
+        if (kick > 0 && kick < 1) {
+          p.z += 0.014 * Math.sin(kick * Math.PI)
+          rxx -= 0.04 * Math.sin(kick * Math.PI)
         }
       }
     }
@@ -551,12 +708,15 @@ export function ViewModel() {
       }
     }
 
-    // Grenades: lower the gun while the left hand cooks / throws.
+    // Grenades: the gun drops away to the right while the off hand pulls the
+    // pin, winds up and throws; it comes back up after the follow-through.
     const throwing = a.throw >= 0
     if (a.cooking || throwing) {
-      const lower = a.cooking ? 1 : Math.sin(a.throw * Math.PI)
-      p.y -= 0.12 * lower
-      rxx -= 0.4 * lower
+      const lower = throwing ? (a.throw < 0.7 ? 1 : 1 - smooth((a.throw - 0.7) / 0.3)) : Math.min(1, (a.cookTime ?? 1) / 0.12)
+      p.y -= 0.1 * lower
+      p.x += 0.05 * lower
+      rxx -= 0.38 * lower
+      rz -= 0.25 * lower
     }
 
     const newShot = (a.sinceShot ?? 1) < vm.lastSince
@@ -566,7 +726,7 @@ export function ViewModel() {
       if (slide.userData.restZ === undefined) slide.userData.restZ = slide.position.z
       const since = a.sinceShot ?? 1
       let back = since < 0.075 ? Math.sin((since / 0.075) * Math.PI) : 0
-      if (a.empty) back = 0.85
+      if (a.empty && !(a.reload >= RELOAD_KEYS.empty.slam)) back = 0.85
       slide.position.z = slide.userData.restZ + 0.032 * back
     }
 
@@ -637,11 +797,10 @@ export function ViewModel() {
     placeArm(vm.armR, wristR, ELBOW_R)
 
     const grenadeKind = a.grenadeKind ?? 'frag'
-    for (const [k, g] of Object.entries(vm.grenades)) g.visible = (a.cooking || throwing) && k === grenadeKind
-    if (a.cooking || throwing) {
-      const tw = throwing ? smooth(a.throw) : 0
-      const wristL = new Vector3(-0.17 + 0.1 * tw, -0.13 + 0.09 * Math.sin(tw * Math.PI), -0.32 - 0.18 * tw)
-      placeArm(vm.armL, wristL, ELBOW_L)
+    const held = throwPose(vm, a)
+    for (const [k, g] of Object.entries(vm.grenades)) g.visible = held.grenade && k === grenadeKind
+    if (held.active) {
+      placeArm(vm.armL, held.wrist, held.elbow)
       vm.armL.visible = true
     } else if (id === 'knife') {
       vm.armL.visible = false
@@ -655,6 +814,14 @@ export function ViewModel() {
         vm.camera.worldToLocal(_b)
         _b.y -= 0.03
         wristL.lerp(_b, magHand)
+      }
+      if (chargeHand > 0) {
+        // Fingers over the handle from the left, pulling it back toward the face.
+        _c.copy(CHARGE_POINT[id])
+        _c.z += CHARGE_TRAVEL[id] * chargePull
+        _c.x -= 0.045
+        _c.y -= 0.01
+        wristL.lerp(toCam(_c, _d), chargeHand)
       }
       if (shellHand !== null) {
         // Off the pump to the belt, then for each shell: up to the loading port,
@@ -682,7 +849,8 @@ export function ViewModel() {
         wristL.lerp(_b, rocketHand)
       }
       // Reaching out for the rocket brings the elbow forward with it.
-      placeArm(vm.armL, wristL, rocketHand > 0 ? _e.copy(ELBOW_L).lerp(ELBOW_L_REACH, rocketHand) : ELBOW_L)
+      const elbowL = rocketHand > 0 ? _e.copy(ELBOW_L).lerp(ELBOW_L_REACH, rocketHand) : chargeHand > 0 ? _e.copy(ELBOW_L).lerp(ELBOW_L_CHARGE, chargeHand) : ELBOW_L
+      placeArm(vm.armL, wristL, elbowL)
       vm.armL.visible = true
     }
     if (shellHand === null) vm.handShell.visible = false
@@ -720,12 +888,15 @@ export function ViewModel() {
 export function RenderPipeline() {
   const gl = useThree((s) => s.gl)
   const quality = useGameStore((s) => s.settings.quality)
-  const grade = useMemo(() => (ColorGrade.supported(gl) ? new ColorGrade() : null), [gl])
+  const samples = quality === 'high' ? 4 : 2
+  const grade = useMemo(() => (ColorGrade.supported(gl) ? new ColorGrade({ samples }) : null), [gl, samples])
   useEffect(() => () => grade?.dispose(), [grade])
 
   useFrame(({ gl: renderer, scene, camera }) => {
     renderer.autoClear = false
     const graded = grade && quality !== 'low'
+    // Shader warm-up compiles against whatever target the frame is drawn into.
+    runtime.gradeTarget = graded ? grade.target : null
     if (graded) grade.begin(renderer)
     else renderer.clear()
     renderer.render(scene, camera)

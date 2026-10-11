@@ -166,6 +166,17 @@ export const materials = {
     ),
 }
 
+const instancedCache = new Map()
+
+/**
+ * A copy of a material for instanced meshes. Sharing one material between
+ * instanced and plain meshes makes three.js swap shader programs on every draw.
+ */
+export function instancedVariant(material) {
+  if (!instancedCache.has(material)) instancedCache.set(material, material.clone())
+  return instancedCache.get(material)
+}
+
 export const CONTAINER_COLORS = {
   red: '#9c3a2c',
   blue: '#2f5a86',

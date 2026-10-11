@@ -90,6 +90,18 @@ function AmmoBox() {
  * Top-centre: timer + score
  * ------------------------------------------------------------------------- */
 
+/** The match clock: centred, fixed-width digits; turns red and pulses in the last 30 s. */
+function Clock({ room }) {
+  const warmup = room.phase === 'warmup'
+  const low = !warmup && room.timeLeft <= 30
+  return (
+    <div className={`cell clock ${low ? 'low' : ''}`}>
+      <span className="timer">{warmup ? 'WARM-UP' : fmtTime(room.timeLeft)}</span>
+      <span className="sub">{warmup ? 'Host starts it from Esc' : `First to ${room.scoreLimit}`}</span>
+    </div>
+  )
+}
+
 function TopBar() {
   const room = useGameStore((s) => s.room)
   const mode = useGameStore((s) => s.mode)
@@ -97,32 +109,32 @@ function TopBar() {
   const myId = useGameStore((s) => s.myId)
   if (mode === 'tdm') {
     const cells = [
-      [TEAMS.ALPHA, room.scoreAlpha],
-      [TEAMS.BRAVO, room.scoreBravo],
+      [TEAMS.ALPHA, room.scoreAlpha, 'left'],
+      [TEAMS.BRAVO, room.scoreBravo, 'right'],
     ]
-    const cell = ([t, score]) => (
-      <div className="cell" key={t} style={{ borderBottom: t === team ? `2px solid ${teamColor(t, mode)}` : '2px solid transparent' }}>
-        <span className="dl-label" style={{ color: teamColor(t, mode), fontSize: 11 }}>
-          {TEAM_LABELS[t]}
-          {t === team ? ' · YOU' : ''}
-        </span>
-        <span className="score" style={{ color: teamColor(t, mode) }}>
-          {score}
-        </span>
-        <div className="bar">
-          <div style={{ width: `${(score / Math.max(1, room.scoreLimit)) * 100}%`, background: teamColor(t, mode) }} />
+    const leading = room.scoreAlpha === room.scoreBravo ? '' : room.scoreAlpha > room.scoreBravo ? TEAMS.ALPHA : TEAMS.BRAVO
+    const cell = ([t, score, side]) => {
+      const color = teamColor(t, mode)
+      return (
+        <div className={`cell team ${side} ${t === team ? 'mine' : ''}`} key={t} style={{ '--team': color }}>
+          <span className="name">
+            {TEAM_LABELS[t]}
+            {t === team ? <em> · YOU</em> : null}
+          </span>
+          <span className="score">
+            {score}
+            {leading === t && <i className="lead" />}
+          </span>
+          <div className="bar">
+            <div style={{ width: `${Math.min(100, (score / Math.max(1, room.scoreLimit)) * 100)}%` }} />
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
     return (
       <div className="dl-top">
         {cell(cells[0])}
-        <div className="cell">
-          <span className="timer">{room.phase === 'warmup' ? 'WARM-UP' : fmtTime(room.timeLeft)}</span>
-          <span className="dl-label" style={{ fontSize: 10 }}>
-            {room.phase === 'warmup' ? 'Host starts it from Esc' : `First to ${room.scoreLimit}`}
-          </span>
-        </div>
+        <Clock room={room} />
         {cell(cells[1])}
       </div>
     )
@@ -131,12 +143,7 @@ function TopBar() {
   const myRank = ranked.findIndex((p) => p.id === myId)
   return (
     <div className="dl-top">
-      <div className="cell">
-        <span className="timer">{room.phase === 'warmup' ? 'WARM-UP' : fmtTime(room.timeLeft)}</span>
-        <span className="dl-label" style={{ fontSize: 10 }}>
-          {room.phase === 'warmup' ? 'Host starts it from Esc' : `First to ${room.scoreLimit}`}
-        </span>
-      </div>
+      <Clock room={room} />
       <div className="cell dl-ffa-top">
         {ranked.slice(0, 3).map((p, i) => (
           <div key={p.id} className={`r ${p.id === myId ? 'me' : ''}`}>
