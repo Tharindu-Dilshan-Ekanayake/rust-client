@@ -6,6 +6,14 @@
  * supersonic crack, a muzzle blast with a closing filter, a low boom, the
  * action cycling, and early reflections, then soft-clipped like a recording —
  * which would be far too many live nodes per shot.
+ *
+ * The weapons are mixed the way Call of Duty's are: your own gun is a wide,
+ * stereo, hard-hitting shot (a sub kick you feel, the bolt clacking, echoes
+ * coming back from both sides) with a ring-out when you let go of the trigger;
+ * other players' guns far away become a hard pop and a long rolling echo; and
+ * hits, kills and headshots get dry, crisp markers you can tell apart by ear.
+ *
+ * A render returns a Float32Array (mono) or [left, right] (stereo).
  */
 
 const SR = 44100
@@ -132,6 +140,22 @@ function reflections(out, list) {
   }
 }
 
+/** finish() for a stereo pair: one shared peak, so the image stays where it is. */
+function finishStereo(pair, { level = 0.9, fadeOut = 0.02 } = {}) {
+  let peak = 1e-6
+  for (const ch of pair) for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]))
+  const fade = Math.floor(fadeOut * SR)
+  for (const ch of pair) {
+    for (let i = 0; i < ch.length; i++) {
+      let v = (ch[i] / peak) * level
+      const left = ch.length - i
+      if (left < fade) v *= left / fade
+      ch[i] = v
+    }
+  }
+  return pair
+}
+
 /** tanh soft clip (density without hard clipping), peak-preserving. */
 function softClip(out, drive) {
   const k = Math.tanh(drive)
@@ -171,8 +195,7 @@ function finish(out, { drive = 1, level = 0.9, fadeOut = 0.02 } = {}) {
  *   - the action cycling, the tail and early reflections off nearby walls,
  * then driven into a soft clipper like a hot recording.
  */
-function gunshot(p, seed) {
-  const rand = rng(seed)
+function gunshotCore(p, rand) {
   const out = buf(p.len)
   const v = 0.9 + rand() * 0.2
   if (p.crack) {
@@ -192,18 +215,107 @@ function gunshot(p, seed) {
     out[i] += t < 1 ? Math.sin(t * Math.PI) * p.pulse.gain : -Math.sin(((t - 1) / 2) * Math.PI) * p.pulse.gain * 0.35
   }
   noiseLayer(out, rand, { dur: p.low.tau * 8, tau: p.low.tau, att: 0.0015, freq: p.low.freq, freqTo: p.low.freq * 0.6, gain: p.low.gain * 5, stages: 2 })
+  // Sub weight: the punch you feel in a CoD shot, as low-passed noise. (A sine
+  // sweep here was a pitched "bom" and, with the action ringing on top, the
+  // whole shot sounded like a tin bucket being hit.)
+  thump(out, rand, 0, 125, 0.018 + 0.01 * p.pulse.gain, 0.42 * Math.min(p.pulse.gain, 1.2))
   if (p.mech) {
-    clickLayer(out, rand, { start: p.mech.t, freq: p.mech.freq, q: 6, tau: 0.004, gain: p.mech.gain })
-    metalLayer(out, rand, { start: p.mech.t + 0.004, base: p.mech.freq * 0.55, tau: 0.012, gain: p.mech.gain * 0.25 })
+    // The action: bolt carrier back, then home — a dry mechanical "chk-chk",
+    // short knocks through the receiver with no steel left ringing after.
+    contact(out, rand, p.mech.t * 0.35, p.mech.gain * 0.45, 2600)
+    body(out, rand, p.mech.t * 0.35, 950, 1.1, 0.005, p.mech.gain * 0.7)
+    contact(out, rand, p.mech.t, p.mech.gain * 0.55, 2200)
+    body(out, rand, p.mech.t, 720, 1, 0.007, p.mech.gain * 0.9)
   }
   if (p.tail) noiseLayer(out, rand, { start: 0.015, dur: p.len - 0.015, tau: p.tail.tau, att: 0.02, freq: p.tail.freq, freqTo: p.tail.freq * 0.35, gain: p.tail.gain })
   if (p.extra) p.extra(out, rand)
-  // Saturate the shot itself, then add the echoes at their own level. (Echoes
-  // added before the soft clip came back nearly as loud as the shot, and read
-  // as a second, muffled bang a few hundred ms later.)
+  // Saturate the shot itself; the echoes go on afterwards at their own level.
+  // (Echoes added before the soft clip came back nearly as loud as the shot,
+  // and read as a second, muffled bang a few hundred ms later.)
   softClip(out, p.drive ?? 3.2)
-  reflections(out, p.refl)
-  return finish(out, { level: 0.95 })
+  return out
+}
+
+/**
+ * Your own gun (and anyone's close by): the same shot in both ears, the
+ * reflections different in each, a little later on one side and earlier on
+ * the other, like walls either side of you answering. That spreads the shot
+ * wide round your head the way a recorded game gunshot is, instead of a point
+ * between the ears.
+ */
+function gunshot(p, seed) {
+  const rand = rng(seed)
+  const core = gunshotCore(p, rand)
+  const pair = [core.slice(), core.slice()]
+  pair.forEach((ch, side) => {
+    const skew = side ? 1.09 : 0.91
+    echoBursts(
+      ch,
+      rand,
+      p.refl.map((r, i) => ({ ...r, delay: r.delay * (i % 2 ? 2 - skew : skew) })),
+      p.blast.tau2,
+    )
+  })
+  return finishStereo(pair, { level: 0.95 })
+}
+
+/**
+ * Echoes of a shot as fresh bursts of noise at each reflection time, darker
+ * the later they come. A gunshot is noise, so an echo of it is just more
+ * noise; adding the shot itself back in, delayed, instead summed with the
+ * original into a comb filter that rang hollow, like firing inside a pipe.
+ */
+function echoBursts(out, rand, list, tau) {
+  for (const { delay, gain, cutoff } of list) {
+    noiseLayer(out, rand, { start: delay, dur: tau * 9, tau: tau * 1.4, att: 0.0015, freq: cutoff, freqTo: cutoff * 0.6, gain: gain * 3.4, stages: 2 })
+  }
+}
+
+/**
+ * The same gun a long way off, the CoD distant-fire sound: the crack and the
+ * punch are gone, what's left is a hard, dull "pop" and the sound rolling back
+ * off the walls and the hills for a second or two.
+ */
+function gunshotFar(p, seed) {
+  const rand = rng(seed)
+  const weight = p.pulse.gain
+  const pitch = p.blast.mid / 1900
+  const out = buf(1.5 + weight)
+  noiseLayer(out, rand, { dur: 0.1, tau: 0.01 + 0.006 * weight, att: 0.0004, type: 'bandpass', freq: 1250 * pitch, q: 0.75, gain: 1.6 })
+  if (p.crack) noiseLayer(out, rand, { dur: 0.012, tau: 0.0018, att: 0.0001, type: 'highpass', freq: 2200, gain: p.crack * 0.45 })
+  noiseLayer(out, rand, { dur: 0.5, tau: 0.05 * weight, att: 0.002, freq: 480, freqTo: 140, gain: 1.4 * weight, stages: 2 })
+  // The roll: low noise that swells back up a couple of times as it decays.
+  const roll = buf(out.length / SR)
+  noiseLayer(roll, rand, { start: 0.04, dur: out.length / SR - 0.04, tau: 0.35 + 0.25 * weight, att: 0.06, freq: 520, freqTo: 140, gain: 0.9 * weight, stages: 2 })
+  for (let i = 0; i < roll.length; i++) out[i] += roll[i] * (0.75 + 0.25 * Math.sin((i / SR) * 9 + 1))
+  softClip(out, 1.8)
+  reflections(out, [
+    { delay: 0.17, gain: 0.5, cutoff: 900 },
+    { delay: 0.41, gain: 0.34, cutoff: 650 },
+    { delay: 0.78, gain: 0.2, cutoff: 450 },
+    { delay: 1.2, gain: 0.1, cutoff: 320 },
+  ])
+  return finish(out, { level: 0.9, fadeOut: 0.35 })
+}
+
+/**
+ * The ring-out after you stop firing (CoD plays one when the trigger comes
+ * up): the yard answering the burst, wide and darkening, slaps coming back off
+ * the containers and the walls.
+ */
+function gunTail(p, seed) {
+  const rand = rng(seed)
+  const weight = p.pulse.gain
+  const len = 1.4 + 0.5 * weight
+  const pair = [buf(len), buf(len)]
+  pair.forEach((ch, side) => {
+    noiseLayer(ch, rand, { dur: len, tau: 0.3 + 0.18 * weight, att: 0.025, freq: 1500, freqTo: 220, gain: 0.55, stages: 2 })
+    const slaps = side ? [0.13, 0.31, 0.58, 0.9] : [0.09, 0.24, 0.47, 0.79]
+    slaps.forEach((at, i) => {
+      noiseLayer(ch, rand, { start: at, dur: 0.25, tau: 0.035 + 0.01 * weight, att: 0.002, freq: 1300 / (1 + i * 0.6), gain: (0.7 / (1 + i)) * weight, stages: 2 })
+    })
+  })
+  return finishStereo(pair, { level: 0.6, fadeOut: 0.3 })
 }
 
 const REFL_NEAR = [
@@ -384,6 +496,18 @@ function ring(out, rand, start, base, tau, gain, modes = 6) {
 }
 
 /**
+ * Machined steel ringing: a cluster of bright, closely spaced inharmonic modes
+ * that beat against each other — the shimmer of small gun parts (a mag catch,
+ * a bolt, a slide) rather than the one low tone of a bucket or a bell.
+ */
+const STEEL_RATIOS = [1, 1.19, 1.42, 1.68, 1.97, 2.31, 2.73, 3.18, 3.71]
+function steel(out, rand, start, base, tau, gain, modes = 9) {
+  for (let k = 0; k < modes; k++) {
+    toneLayer(out, { start, dur: tau * 5, tau: tau / (1 + k * 0.22), att: 0.0001, from: base * STEEL_RATIOS[k] * (0.97 + rand() * 0.06), gain: gain / (1 + k * 0.28) })
+  }
+}
+
+/**
  * Stick-slip friction: a part dragged along metal or polymer. Real sliding
  * isn't smooth noise but a fast run of tiny grabs, which is what makes a
  * magazine or a bolt sound like it's scraping along a rail.
@@ -433,29 +557,29 @@ const FOLEY = {
     // Thumb on the release button, then the catch letting go of the mag.
     const o = buf(0.14)
     contact(o, r, 0, 0.35, 4000)
-    body(o, r, 0.001, 2200, 4, 0.004, 0.35)
-    contact(o, r, 0.008, 0.5)
-    ring(o, r, 0.008, 2600, 0.012, 0.22, 4)
-    friction(o, r, { start: 0.012, dur: 0.05, from: 1800, to: 2600, rate: 200, gain: 0.3 })
+    body(o, r, 0.001, 2200, 4, 0.004, 0.21)
+    contact(o, r, 0.008, 0.5, 4500)
+    steel(o, r, 0.008, 3250, 0.0192, 0.396)
+    friction(o, r, { start: 0.012, dur: 0.05, from: 2520, to: 3640, rate: 200, gain: 0.27, q: 2.2 })
     return o
   },
   magOut: (r) => {
     // Out of the well: the drag along the walls, rounds shifting, a knock as it clears.
     const o = buf(0.36)
-    friction(o, r, { dur: 0.085, from: 1500, to: 2800, rate: 160, gain: 0.75 })
+    friction(o, r, { dur: 0.085, from: 2100, to: 3920, rate: 160, gain: 0.675, q: 2.2 })
     rattle(o, r, 0.01, 0.08, 5, 0.22)
-    contact(o, r, 0.085, 0.4)
-    body(o, r, 0.085, 900, 2.5, 0.01, 0.5)
-    ring(o, r, 0.087, 1900, 0.02, 0.2, 5)
+    contact(o, r, 0.085, 0.4, 4500)
+    body(o, r, 0.085, 900, 2.5, 0.01, 0.3)
+    steel(o, r, 0.087, 2375, 0.032, 0.36)
     return o
   },
   magDrop: (r) => {
     // The empty mag landing in the sand: a dull thud, grit, the follower rattling, a little bounce.
     const o = buf(0.5)
-    body(o, r, 0, 220, 0.9, 0.03, 1)
+    body(o, r, 0, 220, 0.9, 0.03, 0.6)
     grains(o, r, 0.002, 0.06, 18, 2500, 6500, 0.25)
     rattle(o, r, 0.01, 0.12, 6, 0.3)
-    body(o, r, 0.11, 300, 1.2, 0.015, 0.35)
+    body(o, r, 0.11, 300, 1.2, 0.015, 0.21)
     return o
   },
   magPouch: (r) => {
@@ -463,8 +587,8 @@ const FOLEY = {
     const o = buf(0.45)
     grains(o, r, 0, 0.12, 40, 1800, 5200, 0.35)
     noiseLayer(o, r, { dur: 0.3, tau: 0.08, att: 0.03, freq: 1200, gain: 0.5 })
-    friction(o, r, { start: 0.12, dur: 0.1, from: 900, to: 1400, rate: 90, gain: 0.4 })
-    body(o, r, 0.22, 700, 2, 0.01, 0.3)
+    friction(o, r, { start: 0.12, dur: 0.1, from: 1260, to: 1960, rate: 90, gain: 0.36, q: 2.2 })
+    body(o, r, 0.22, 700, 2, 0.01, 0.18)
     rattle(o, r, 0.2, 0.06, 3, 0.15)
     return o
   },
@@ -472,10 +596,12 @@ const FOLEY = {
     // Up the well, then seated hard: the catch snaps in ("shk-CLACK"), the
     // loudest and most metallic part of a reload. The seat lands at 60 ms.
     const o = buf(0.42)
-    friction(o, r, { dur: 0.06, from: 1600, to: 3000, rate: 170, gain: 0.8 })
+    friction(o, r, { dur: 0.06, from: 2240, to: 4200, rate: 170, gain: 0.72, q: 2.2 })
     contact(o, r, 0.06, 1, 2500)
-    body(o, r, 0.06, 520, 2.2, 0.014, 1)
-    ring(o, r, 0.061, 2300, 0.035, 0.45, 6)
+    body(o, r, 0.06, 520, 2.2, 0.014, 0.6)
+    steel(o, r, 0.061, 2875, 0.056, 0.81)
+    // Steel mag lips against the steel catch: a brighter ring over the first.
+    steel(o, r, 0.0605, 3900, 0.03, 0.5)
     contact(o, r, 0.064, 0.5, 5000)
     spring(o, 0.062, 1150, 0.015, 0.06)
     rattle(o, r, 0.062, 0.03, 3, 0.15)
@@ -484,84 +610,84 @@ const FOLEY = {
   magTap: (r) => {
     // A palm slapped on the baseplate to be sure.
     const o = buf(0.25)
-    body(o, r, 0, 360, 1.2, 0.012, 1)
+    body(o, r, 0, 360, 1.2, 0.012, 0.6)
     noiseLayer(o, r, { dur: 0.03, tau: 0.004, att: 0.0005, freq: 900, gain: 0.6 })
-    contact(o, r, 0, 0.2)
+    contact(o, r, 0, 0.2, 4500)
     rattle(o, r, 0.004, 0.03, 3, 0.12)
-    ring(o, r, 0.002, 1700, 0.015, 0.12, 4)
+    steel(o, r, 0.002, 2125, 0.024, 0.216)
     return o
   },
   chargePull: (r) => {
     // Unlatch, drag the carrier back against the buffer spring, hit the stop.
-    const o = buf(0.36)
+    const o = buf(0.46)
     contact(o, r, 0, 0.5, 3500)
-    ring(o, r, 0, 2900, 0.01, 0.2, 4)
-    friction(o, r, { start: 0.012, dur: 0.11, from: 2000, to: 3400, rate: 220, gain: 0.8 })
+    steel(o, r, 0, 3625, 0.016, 0.36)
+    friction(o, r, { start: 0.012, dur: 0.11, from: 2800, to: 4760, rate: 220, gain: 0.72, q: 2.2 })
     toneLayer(o, { start: 0.015, dur: 0.11, tau: 0.08, att: 0.01, from: 700, to: 1100, gain: 0.04, wave: 'tri' })
-    contact(o, r, 0.125, 0.6)
-    ring(o, r, 0.126, 1700, 0.03, 0.4, 6)
-    body(o, r, 0.125, 600, 2, 0.01, 0.4)
+    contact(o, r, 0.125, 0.6, 4500)
+    steel(o, r, 0.126, 2125, 0.048, 0.72)
+    body(o, r, 0.125, 600, 2, 0.01, 0.24)
     return o
   },
   boltSlam: (r) => {
     // The carrier slams home and the lugs lock: a hard crack, the whole gun
     // thunking, steel ringing, the buffer spring humming after.
-    const o = buf(0.5)
+    const o = buf(0.6)
     contact(o, r, 0, 1.2, 2000)
-    body(o, r, 0, 420, 1.6, 0.02, 1.2)
-    ring(o, r, 0.001, 1450, 0.07, 0.8, 8)
-    contact(o, r, 0.006, 0.4)
-    ring(o, r, 0.007, 2650, 0.03, 0.35, 5)
+    body(o, r, 0, 420, 1.6, 0.02, 0.72)
+    steel(o, r, 0.001, 1813, 0.112, 1.4)
+    contact(o, r, 0.006, 0.4, 4500)
+    steel(o, r, 0.007, 3313, 0.048, 0.63)
     spring(o, 0.004, 620, 0.06, 0.07)
     rattle(o, r, 0.01, 0.05, 3, 0.12)
     return o
   },
   slideRelease: (r) => {
     // Slide stop down, the slide snapping forward onto a fresh round.
-    const o = buf(0.36)
+    const o = buf(0.46)
     contact(o, r, 0, 0.4, 4000)
-    friction(o, r, { start: 0.004, dur: 0.02, from: 2500, to: 1800, rate: 300, gain: 0.5 })
+    friction(o, r, { start: 0.004, dur: 0.02, from: 3500, to: 2520, rate: 300, gain: 0.45, q: 2.2 })
     contact(o, r, 0.024, 1.1, 2200)
-    body(o, r, 0.024, 480, 1.8, 0.014, 0.9)
-    ring(o, r, 0.025, 1900, 0.05, 0.6, 7)
+    body(o, r, 0.024, 480, 1.8, 0.014, 0.54)
+    steel(o, r, 0.025, 2375, 0.08, 1.08)
     spring(o, 0.026, 820, 0.04, 0.06)
     return o
   },
   boltUp: (r) => {
     const o = buf(0.16)
     contact(o, r, 0, 0.6, 3000)
-    ring(o, r, 0.001, 2600, 0.014, 0.3, 5)
-    friction(o, r, { start: 0.004, dur: 0.03, from: 2400, to: 2900, rate: 260, gain: 0.3 })
+    steel(o, r, 0.001, 3250, 0.0224, 0.54)
+    friction(o, r, { start: 0.004, dur: 0.03, from: 3360, to: 4060, rate: 260, gain: 0.27, q: 2.2 })
     return o
   },
   boltBack: (r) => {
-    const o = buf(0.32)
-    friction(o, r, { dur: 0.15, from: 1700, to: 3000, rate: 180, gain: 0.8 })
-    contact(o, r, 0.15, 0.7)
-    ring(o, r, 0.151, 1500, 0.035, 0.5, 6)
+    const o = buf(0.46)
+    friction(o, r, { dur: 0.15, from: 2380, to: 4200, rate: 180, gain: 0.72, q: 2.2 })
+    contact(o, r, 0.15, 0.7, 4500)
+    steel(o, r, 0.151, 1875, 0.056, 0.9)
     return o
   },
   boltForward: (r) => {
-    const o = buf(0.36)
-    friction(o, r, { dur: 0.12, from: 3000, to: 1900, rate: 200, gain: 0.8 })
-    contact(o, r, 0.12, 1)
-    ring(o, r, 0.121, 1300, 0.05, 0.6, 7)
-    body(o, r, 0.12, 500, 1.8, 0.012, 0.6)
+    const o = buf(0.5)
+    friction(o, r, { dur: 0.12, from: 4200, to: 2660, rate: 200, gain: 0.72, q: 2.2 })
+    contact(o, r, 0.12, 1, 4500)
+    steel(o, r, 0.121, 1625, 0.08, 1.08)
+    body(o, r, 0.12, 500, 1.8, 0.012, 0.36)
     return o
   },
   boltDown: (r) => {
     const o = buf(0.2)
     contact(o, r, 0, 0.9, 2500)
-    body(o, r, 0, 600, 2, 0.01, 0.7)
-    ring(o, r, 0.001, 2200, 0.022, 0.35, 5)
+    body(o, r, 0, 600, 2, 0.01, 0.42)
+    steel(o, r, 0.001, 2750, 0.0352, 0.63)
     return o
   },
   cylinderOpen: (r) => {
     const o = buf(0.3)
     contact(o, r, 0, 0.6, 3500)
-    friction(o, r, { start: 0.01, dur: 0.07, from: 2600, to: 1900, rate: 260, gain: 0.35 })
-    contact(o, r, 0.08, 0.7)
-    ring(o, r, 0.081, 1700, 0.04, 0.5, 6)
+    friction(o, r, { start: 0.01, dur: 0.07, from: 3640, to: 2660, rate: 260, gain: 0.315, q: 2.2 })
+    contact(o, r, 0.08, 0.7, 4500)
+    steel(o, r, 0.081, 2125, 0.064, 0.9)
     return o
   },
   shellsDrop: (r) => {
@@ -574,46 +700,46 @@ const FOLEY = {
   },
   speedloader: (r) => {
     const o = buf(0.3)
-    friction(o, r, { dur: 0.06, from: 2000, to: 2500, rate: 240, gain: 0.4 })
+    friction(o, r, { dur: 0.06, from: 2800, to: 3500, rate: 240, gain: 0.36, q: 2.2 })
     rattle(o, r, 0.02, 0.05, 6, 0.3)
-    contact(o, r, 0.07, 0.7)
-    ring(o, r, 0.071, 2000, 0.03, 0.4, 5)
+    contact(o, r, 0.07, 0.7, 4500)
+    steel(o, r, 0.071, 2500, 0.048, 0.72)
     return o
   },
   cylinderClose: (r) => {
     const o = buf(0.35)
     contact(o, r, 0, 1.1, 2200)
-    body(o, r, 0, 520, 1.8, 0.012, 0.8)
-    ring(o, r, 0.001, 1800, 0.05, 0.6, 7)
+    body(o, r, 0, 520, 1.8, 0.012, 0.48)
+    steel(o, r, 0.001, 2250, 0.08, 1.08)
     return o
   },
   pumpBack: (r) => {
     // Forend racked back: the action bars drag, the hull kicks out, the bolt hits the rear.
-    const o = buf(0.26)
-    contact(o, r, 0, 0.4)
-    friction(o, r, { start: 0.004, dur: 0.08, from: 1300, to: 2400, rate: 140, gain: 0.85 })
+    const o = buf(0.42)
+    contact(o, r, 0, 0.4, 4500)
+    friction(o, r, { start: 0.004, dur: 0.08, from: 1820, to: 3360, rate: 140, gain: 0.765, q: 2.2 })
     contact(o, r, 0.085, 0.9, 2200)
-    body(o, r, 0.085, 420, 1.6, 0.014, 0.8)
-    ring(o, r, 0.086, 1150, 0.045, 0.55, 7)
+    body(o, r, 0.085, 420, 1.6, 0.014, 0.48)
+    steel(o, r, 0.086, 1438, 0.072, 0.99)
     return o
   },
   pumpForward: (r) => {
     // ...and slammed forward: the bolt locks with the loudest clack of the cycle.
-    const o = buf(0.32)
-    friction(o, r, { dur: 0.07, from: 2400, to: 1500, rate: 150, gain: 0.8 })
+    const o = buf(0.48)
+    friction(o, r, { dur: 0.07, from: 3360, to: 2100, rate: 150, gain: 0.72, q: 2.2 })
     contact(o, r, 0.072, 1.2, 2000)
-    body(o, r, 0.072, 380, 1.5, 0.018, 1.1)
-    ring(o, r, 0.073, 1250, 0.06, 0.7, 8)
+    body(o, r, 0.072, 380, 1.5, 0.018, 0.66)
+    steel(o, r, 0.073, 1563, 0.096, 1.26)
     spring(o, 0.075, 540, 0.04, 0.05)
     return o
   },
   shellInsert: (r) => {
     // A shell thumbed past the lifter into the tube: brass on steel, a click.
     const o = buf(0.22)
-    friction(o, r, { dur: 0.04, from: 1600, to: 2600, rate: 220, gain: 0.5 })
+    friction(o, r, { dur: 0.04, from: 2240, to: 3640, rate: 220, gain: 0.45, q: 2.2 })
     contact(o, r, 0.045, 0.8, 3000)
-    body(o, r, 0.045, 700, 2, 0.01, 0.5)
-    ring(o, r, 0.046, 2400, 0.02, 0.3, 5)
+    body(o, r, 0.045, 700, 2, 0.01, 0.3)
+    steel(o, r, 0.046, 3000, 0.032, 0.54)
     spring(o, 0.046, 1400, 0.012, 0.04)
     return o
   },
@@ -621,17 +747,17 @@ const FOLEY = {
     const o = buf(0.36)
     contact(o, r, 0, 0.6, 3000)
     spring(o, 0.004, 700, 0.05, 0.08)
-    ring(o, r, 0.04, 900, 0.06, 0.6, 7)
-    body(o, r, 0.04, 450, 1.5, 0.015, 0.5)
+    steel(o, r, 0.04, 1125, 0.096, 1.08)
+    body(o, r, 0.04, 450, 1.5, 0.015, 0.3)
     return o
   },
   lidClose: (r) => {
-    const o = buf(0.42)
+    const o = buf(0.56)
     contact(o, r, 0, 1.2, 2000)
-    body(o, r, 0, 380, 1.4, 0.022, 1.1)
-    ring(o, r, 0.001, 820, 0.08, 0.8, 8)
+    body(o, r, 0, 380, 1.4, 0.022, 0.66)
+    steel(o, r, 0.001, 1025, 0.128, 1.4)
     contact(o, r, 0.015, 0.6, 4000)
-    ring(o, r, 0.016, 2400, 0.02, 0.3, 4)
+    steel(o, r, 0.016, 3000, 0.032, 0.54)
     return o
   },
   beltLay: (r) => {
@@ -837,6 +963,76 @@ const BIG = {
 }
 
 /* ---------------------------------------------------------------------------
+ * Hit markers, near misses, gear
+ * ------------------------------------------------------------------------- */
+
+const MARKERS = {
+  /** A hit: CoD's dry, crisp tick — a click with a little plasticky body, no ring. */
+  hitmarker: (r) => {
+    const o = buf(0.07)
+    contact(o, r, 0, 1, 4800)
+    body(o, r, 0, 2600, 3.5, 0.005, 0.7)
+    body(o, r, 0.0005, 1150, 2, 0.007, 0.35)
+    return finish(o, { level: 0.7, fadeOut: 0.01 })
+  },
+  /** A headshot: the tick and a metallic "dink", a round glancing off a helmet. */
+  headshot: (r) => {
+    const o = buf(0.16)
+    contact(o, r, 0, 1, 4200)
+    body(o, r, 0, 2200, 3, 0.006, 0.55)
+    ring(o, r, 0.001, 3300, 0.022, 0.55, 3)
+    return finish(o, { level: 0.78 })
+  },
+  /** A kill: a heavier, lower "thwack" under the tick. */
+  killConfirm: (r) => {
+    const o = buf(0.24)
+    contact(o, r, 0, 1, 4000)
+    body(o, r, 0, 1900, 2.5, 0.008, 0.65)
+    thump(o, r, 0, 240, 0.022, 0.95)
+    body(o, r, 0.002, 680, 1.4, 0.022, 0.5)
+    return finish(o, { drive: 1.6, level: 0.85 })
+  },
+  /** A headshot kill: the dink over the kill thwack. */
+  killHead: (r) => {
+    const o = buf(0.34)
+    contact(o, r, 0, 1, 4000)
+    thump(o, r, 0, 240, 0.022, 0.9)
+    body(o, r, 0.002, 700, 1.4, 0.02, 0.45)
+    ring(o, r, 0.001, 3200, 0.025, 0.6, 3)
+    return finish(o, { drive: 1.5, level: 0.88 })
+  },
+  /**
+   * A round passing close: the supersonic snap right by your ear, then air
+   * tearing as it goes past, falling in pitch.
+   */
+  bulletCrack: (r) => {
+    const o = buf(0.3)
+    const n = Math.max(2, Math.floor(0.0004 * SR))
+    for (let i = 0; i < n; i++) o[i] += i < n / 2 ? 1.2 : -1
+    noiseLayer(o, r, { dur: 0.012, tau: 0.0018, att: 0.00003, type: 'highpass', freq: 3200, gain: 1.1 })
+    noiseLayer(o, r, { start: 0.001, dur: 0.16, tau: 0.035, att: 0.006, type: 'bandpass', freq: 5600 + r() * 1200, freqTo: 1300, q: 2.2, gain: 1.2 })
+    reflections(o, [{ delay: 0.026, gain: 0.22, cutoff: 2600 }])
+    return finish(o, { drive: 1.4, level: 0.85 })
+  },
+  /** Bringing the gun up to aim: sling and webbing shifting, a buckle tapping the stock. */
+  adsIn: (r) => {
+    const o = buf(0.3)
+    noiseLayer(o, r, { dur: 0.2, tau: 0.06, att: 0.03, type: 'bandpass', freq: 1300, freqTo: 900, q: 0.9, gain: 0.7 })
+    rattle(o, r, 0.03, 0.1, 5, 0.35)
+    clickLayer(o, r, { start: 0.08, freq: 2400, q: 3, gain: 0.25 })
+    return finish(o, { level: 0.6 })
+  },
+  /** The last rounds in a mag: the follower spring and the rounds shifting, a muted double tick. */
+  lowAmmo: (r) => {
+    const o = buf(0.08)
+    contact(o, r, 0, 0.5, 3000)
+    body(o, r, 0, 1800, 1.5, 0.004, 0.5)
+    contact(o, r, 0.018, 0.3, 3500)
+    return finish(o, { level: 0.45 })
+  },
+}
+
+/* ---------------------------------------------------------------------------
  * Building the bank
  * ------------------------------------------------------------------------- */
 
@@ -882,6 +1078,10 @@ export function bankRecipes() {
 function recipes() {
   const list = []
   for (const [id, p] of Object.entries(GUNS)) list.push([id, 4, (s) => gunshot(p, s)])
+  // Hit markers early: they're the sounds a player waits on most.
+  for (const [name, fn] of Object.entries(MARKERS)) list.push([name, name === 'bulletCrack' ? 4 : 2, (s) => fn(rng(s))])
+  for (const [id, p] of Object.entries(GUNS)) list.push([`${id}Far`, 3, (s) => gunshotFar(p, s)])
+  for (const [id, p] of Object.entries(GUNS)) if (id !== 'rpg') list.push([`${id}Tail`, 2, (s) => gunTail(p, s)])
   list.push(['suppressedRifle', 3, (s) => suppressed('rifle', s)])
   list.push(['suppressedPistol', 3, (s) => suppressed('pistol', s)])
   list.push(['suppressedSniper', 2, (s) => suppressed('sniper', s)])
@@ -904,8 +1104,9 @@ export async function buildBank(ctx) {
     const variants = []
     for (let v = 0; v < count; v++) {
       const data = render(seed++ * 7919)
-      const b = ctx.createBuffer(1, data.length, SR)
-      b.copyToChannel(data, 0)
+      const channels = Array.isArray(data) ? data : [data]
+      const b = ctx.createBuffer(channels.length, channels[0].length, SR)
+      channels.forEach((ch, i) => b.copyToChannel(ch, i))
       variants.push(b)
     }
     bank.set(name, variants)

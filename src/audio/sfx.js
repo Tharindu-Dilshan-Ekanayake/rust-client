@@ -44,10 +44,13 @@ function outdoorIR(c) {
       lp += ((Math.random() * 2 - 1) - lp) * k
       d[i] = lp * Math.exp(-t * 3.2) * (t < 0.012 ? t / 0.012 : 1)
     }
-    for (const [at, g] of [[0.021, 0.55], [0.037, 0.4], [0.061, 0.32], [0.094, 0.22], [0.15, 0.15]]) {
-      const j = Math.floor((at + ch * 0.003) * c.sampleRate)
-      d[j] += g
-      d[j + 1] += g * 0.6
+    // Early reflections as short scattered bursts (a wall of sandbags and
+    // containers is rough, not a mirror). Single-sample spikes combed every
+    // shot through them into a hollow, tin-can colour.
+    for (const [at, g] of [[0.021, 0.5], [0.037, 0.36], [0.061, 0.28], [0.094, 0.2], [0.15, 0.13]]) {
+      const j = Math.floor((at + ch * 0.004) * c.sampleRate)
+      const spread = Math.floor(0.006 * c.sampleRate)
+      for (let k = 0; k < spread && j + k < len; k++) d[j + k] += (Math.random() * 2 - 1) * g * 0.45 * Math.exp(-k / (0.0015 * c.sampleRate))
     }
   }
   return ir
@@ -131,8 +134,10 @@ function startBank(c) {
     bank.set(
       name,
       variants.map((d) => {
-        const b = c.createBuffer(1, d.length, sampleRate)
-        b.copyToChannel(d, 0)
+        // Mono, or [left, right] for the wide first-person gunshots.
+        const channels = Array.isArray(d) ? d : [d]
+        const b = c.createBuffer(channels.length, channels[0].length, sampleRate)
+        channels.forEach((ch, i) => b.copyToChannel(ch, i))
         return b
       }),
     )
@@ -410,6 +415,10 @@ const SOUNDS = {
     tone(out, { dur: 0.05, type: 'square', from: 1500, peak: 0.12 })
     tone(out, { start: 0.06, dur: 0.09, type: 'square', from: 2300, peak: 0.12 })
   },
+  killHead(out) {
+    tone(out, { dur: 0.05, type: 'square', from: 1500, peak: 0.12 })
+    tone(out, { start: 0.04, dur: 0.12, type: 'triangle', from: 2400, peak: 0.12 })
+  },
   /** Promotion: a short rising bugle-ish triad over a low swell. */
   rankUp(out) {
     tone(out, { dur: 0.9, type: 'triangle', from: 110, peak: 0.16, attack: 0.08 })
@@ -484,6 +493,10 @@ export function play(name, opts) {
     playSequence(sequence.map(([at, n]) => [at, n]), opts)
     return
   }
+  if (GUNS.has(name) && bank?.get(name)) {
+    playGun(name, opts)
+    return
+  }
   const banked = bank?.get(bankName(name, opts))
   if (banked) {
     playBuffer(banked, name, opts)
@@ -504,6 +517,38 @@ function bankName(name, opts) {
 
 const ALIASES = { swoosh: 'knifeSwing', stab: 'knifeHit', swap: 'weaponRaise', cylinder: 'hammer' }
 
+const GUNS = new Set(['ar', 'smg', 'lmg', 'hornet', 'pistol', 'viper', 'sniper', 'shotgun', 'rpg'])
+/** Between these distances a gun crossfades from its close shot to its distant one (m). */
+const FAR_FROM = 20
+const FAR_TO = 38
+/** A burst's ring-out plays once the gun has been quiet this long (longer than any auto gun's gap). */
+const TAIL_AFTER_MS = 150
+let tailTimer = 0
+
+/**
+ * A gunshot. Your own: the wide close shot, and the ring-out once you let go
+ * of the trigger. Someone else's: their close shot near you, crossfading into
+ * the distant pop-and-roll as they get further away.
+ */
+function playGun(name, opts = {}) {
+  if (!opts.pos) {
+    playBuffer(bank.get(name), name, opts)
+    const tail = bank.get(`${name}Tail`)
+    if (!tail) return
+    clearTimeout(tailTimer)
+    tailTimer = setTimeout(() => {
+      if (ctx?.state === 'running') playBuffer(tail, 'tail', { volume: (opts.volume ?? 1) * 0.7 })
+    }, TAIL_AFTER_MS)
+    return
+  }
+  const dist = Math.hypot(opts.pos[0] - listenerPos.x, opts.pos[1] - listenerPos.y, opts.pos[2] - listenerPos.z)
+  const far = bank.get(`${name}Far`) ? Math.min(1, Math.max(0, (dist - FAR_FROM) / (FAR_TO - FAR_FROM))) : 0
+  const volume = opts.volume ?? 1
+  if (far < 1) playBuffer(bank.get(name), name, { ...opts, volume: volume * Math.cos((far * Math.PI) / 2) })
+  // The distant version carries further before it fades (the roll is low and loud).
+  if (far > 0) playBuffer(bank.get(`${name}Far`), 'far', { ...opts, volume: volume * Math.sin((far * Math.PI) / 2), ref: (opts.ref ?? 4) * 1.6 })
+}
+
 /** Sounds that are really a few foley hits in a row (seconds). */
 const SEQUENCES = {
   bolt: [[0, 'boltUp'], [0.08, 'boltBack'], [0.3, 'boltForward'], [0.43, 'boltDown']],
@@ -511,7 +556,13 @@ const SEQUENCES = {
 
 /** How much of each kind of sound goes to the reverb. */
 function reverbFor(name) {
+  // Hit markers are UI: bone dry, right in your ear.
+  if (/^(hitmarker|headshot|killConfirm|killHead)$/.test(name)) return 0
   if (/^(ar|sniper|pistol|viper|hornet|smg|lmg|shotgun|rpg)$/.test(name)) return 0.32
+  // The ring-out and the distant shot carry their own echoes.
+  if (name === 'tail') return 0.08
+  if (name === 'far') return 0.18
+  if (name === 'bulletCrack') return 0.12
   if (name === 'suppressed') return 0.12
   if (/explosion|flashbang|distant/.test(name)) return 0.45
   if (/footstep|breath|gasp|heartbeat/.test(name)) return 0.02

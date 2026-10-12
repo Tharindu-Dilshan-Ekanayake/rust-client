@@ -233,6 +233,9 @@ export class WeaponSystem {
   shotSound(w) {
     if (w.quiet) sfx.play('suppressed', { kind: QUIET_KIND[w.id] ?? 'pistol' })
     else sfx.play(w.id, { volume: 0.9 })
+    // The last quarter of a mag rings hollow under each shot: time to reload.
+    const left = this.ammo[w.id]?.mag ?? 0
+    if (w.magSize >= 10 && left > 0 && left <= Math.round(w.magSize * 0.25)) sfx.play('lowAmmo', { volume: 0.32 })
   }
 
   /** Recoil kicks the view up and a little sideways; it recovers in update(). */
@@ -441,6 +444,8 @@ export class WeaponSystem {
     // --- ADS ---------------------------------------------------------------------
     // A reload takes the gun off the sight (the mag change happens at the hip).
     const wantAds = canAct && input.mouse.right && !ctx.sprinting && !ctx.lowered && w.adsTime > 0 && !busyThrow && !this.cooking && !this.quickKnife && !this.reloading
+    if (wantAds && !this.wantedAds) sfx.play('adsIn', { volume: 0.45 })
+    this.wantedAds = wantAds
     const adsRate = w.adsTime > 0 ? 1 / w.adsTime : 10
     this.ads = Math.max(0, Math.min(1, this.ads + (wantAds ? adsRate : -adsRate * 1.4) * dt))
 
