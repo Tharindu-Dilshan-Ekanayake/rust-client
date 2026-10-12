@@ -17,7 +17,7 @@ import { RenderPipeline, ViewModel } from './player/ViewModel.jsx'
 import RemotePlayers from './remote/RemotePlayers.jsx'
 import { runtime } from './runtime.js'
 import SceneEnvironment from './SceneEnvironment.jsx'
-import DustlineMap from './world/DustlineMap.jsx'
+import MapScene from './world/MapScene.jsx'
 
 const _fwd = new Vector3()
 const _up = new Vector3()
@@ -143,7 +143,9 @@ export function GameCanvas() {
     <Canvas
       shadows="percentage"
       dpr={DPR[quality] ?? DPR.high}
-      camera={{ fov: 75, near: 0.05, far: 600, position: [30, 14, 30] }}
+      // Near plane at 10 cm (the player capsule keeps the eye 35 cm off any wall):
+      // twice the depth precision of 5 cm, so distant layers don't flicker.
+      camera={{ fov: 75, near: 0.1, far: 600, position: [30, 14, 30] }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onCreated={({ gl, scene }) => {
         gl.domElement.setAttribute('data-game', '')
@@ -158,7 +160,7 @@ export function GameCanvas() {
             character controller), so one step a frame keeps queries current; a
             fixed step would catch up with many steps after a slow frame. */}
         <Physics timeStep="vary">
-          <DustlineMap />
+          <MapScene />
           {inRoom && <LocalPlayer />}
           {inRoom && <ClimbHands />}
         </Physics>

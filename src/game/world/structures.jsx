@@ -280,7 +280,7 @@ export function Catwalk({ p, length, width }) {
  * with rungs, stand-off brackets back to the wall, and goose-neck grab rails
  * that curl over onto the deck so you can haul yourself off the top.
  */
-export function Ladder({ foot, dir, topY, base = 0, rungs: [first, step] }) {
+export function Ladder({ foot, dir, topY, base = 0, rungs: [first, step], material }) {
   const pieces = useMemo(() => {
     const out = []
     const side = [-dir[2], 0, dir[0]]
@@ -299,7 +299,7 @@ export function Ladder({ foot, dir, topY, base = 0, rungs: [first, step] }) {
     return out
   }, [foot, dir, topY, base, first, step])
   const geometry = useMerged(pieces)
-  return <mesh geometry={geometry} material={materials.hazard()} castShadow receiveShadow />
+  return <mesh geometry={geometry} material={material ?? materials.hazard()} castShadow receiveShadow />
 }
 
 export function Stairs({ bottom, top, width, steps = 22, rails = true, material }) {

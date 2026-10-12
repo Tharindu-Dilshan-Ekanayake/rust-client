@@ -2,10 +2,11 @@ import { useRef, useState } from 'react'
 
 import { net, normalizeRoomCode } from '../net/network.js'
 import { MATCH_RULES, MAX_PLAYERS, MODE_LABELS, MODES, ROOM_CODE_LENGTH } from '../shared/constants.js'
-import { MAP_NAME } from '../shared/map.js'
+import { MAPS } from '../shared/maps.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { useGameStore } from '../store/gameStore.js'
 import { Button, Icon } from './common.jsx'
+import { MapPicker } from './MapPicker.jsx'
 import { uiClick, uiHover } from './uiUtils.js'
 
 /* ---------------------------------------------------------------------------
@@ -118,6 +119,7 @@ function PrivatePanel() {
   const [size, setSize] = useState(MAX_PLAYERS)
   const [bots, setBots] = useState(true)
   const [code, setCode] = useState('')
+  const mapName = useGameStore((s) => MAPS[s.mapChoice]?.name ?? '')
   const ready = code.length === ROOM_CODE_LENGTH
   const join = () => ready && net.joinByCode(code)
   const sizeLabel = (n) => (mode === MODES.TDM ? `${n / 2}v${n / 2}` : `${n}`)
@@ -181,7 +183,7 @@ function PrivatePanel() {
             </span>
           </label>
           <div className="dl-private-summary">
-            {MODE_LABELS[mode]} · {sizeLabel(size)} {mode === MODES.TDM ? '' : 'players'} · {bots ? 'bots on' : 'no bots'}
+            {mapName} · {MODE_LABELS[mode]} · {sizeLabel(size)} {mode === MODES.TDM ? '' : 'players'} · {bots ? 'bots on' : 'no bots'}
           </div>
           <Button className="primary dl-wide" onClick={() => net.createPrivate({ mode, maxPlayers: size, bots })}>
             Create room &amp; get key
@@ -221,6 +223,7 @@ function PrivatePanel() {
 /** Map + current loadout, so you know what you're deploying with. */
 function PlayFooter() {
   const cls = useGameStore((s) => s.classes.find((c) => c.id === s.selectedClassId) ?? s.classes[0])
+  const mapName = useGameStore((s) => MAPS[s.mapChoice]?.name ?? '')
   const editClasses = () => {
     useGameStore.setState({ editorReturn: 'mode' })
     useGameStore.getState().setMenuScreen('classes')
@@ -229,7 +232,7 @@ function PlayFooter() {
     <div className="dl-play-footer dl-slide-up" style={{ animationDelay: '200ms' }}>
       <div className="item">
         <span className="dl-label">Map</span>
-        <strong>{MAP_NAME}</strong>
+        <strong>{mapName}</strong>
       </div>
       <div className="item">
         <span className="dl-label">Class</span>
@@ -266,6 +269,7 @@ export function ModeSelect() {
               <span>Quick play</span>
               <span className="hint">Public match · bots fill empty slots</span>
             </div>
+            <MapPicker />
             <div className="dl-play-modes">
               {[MODES.TDM, MODES.FFA].map((mode, i) => (
                 <ModeCard key={mode} mode={mode} index={i} />

@@ -18,7 +18,8 @@ import {
   Vector3,
 } from 'three'
 
-import { ENTITIES, yawOffset } from '../../shared/map.js'
+import { yawOffset } from '../../shared/mapKit.js'
+import { activeMap } from '../../store/gameStore.js'
 import { runtime } from '../runtime.js'
 import { materials } from '../world/materials.js'
 import { bulletHoleTexture, softDotTexture, smokeTexture } from '../world/textures.js'
@@ -116,14 +117,25 @@ class ParticlePool {
     this.alpha[i] = alpha
     this.gravity[i] = gravity
     this.drag[i] = drag
+    this.idle = false
+    this.points.visible = true
+  }
+
+  /** Ends every particle at once (the map changed). */
+  clear() {
+    this.life.fill(0)
   }
 
   update(dt) {
+    // Empty since the last update: nothing to move, upload or draw.
+    if (this.idle) return
+    let live = 0
     for (let i = 0; i < this.max; i++) {
       if (this.life[i] <= 0) {
         if (this.alpha[i] !== 0) this.alpha[i] = 0
         continue
       }
+      live++
       this.life[i] -= dt
       const t = 1 - Math.max(0, this.life[i]) / this.maxLife[i]
       const k = i * 3
@@ -138,6 +150,9 @@ class ParticlePool {
       // Quick fade-in, long fade-out.
       this.alpha[i] = this.alpha0[i] * Math.min(1, t * 8) * (1 - t * t)
     }
+    // Once the last one has faded (alphas zeroed above, uploaded below), go idle.
+    this.idle = live === 0
+    this.points.visible = live > 0
     const a = this.geometry.attributes
     a.position.needsUpdate = true
     a.color.needsUpdate = true
@@ -162,21 +177,33 @@ function randomDir(spreadUp = 0) {
  * walls — the war going on around the map.
  * rate: smoke particles/s; size: [start, end]; rise: m/s; life: s.
  */
-const WRECK_PLUMES = ENTITIES.filter((e) => e.fire || e.smoke).map((e) => {
-  const seat = e.fire ?? e.smoke
-  const o = yawOffset(e.p, seat[0], seat[2], e.rotY)
-  const p = [o[0], e.p[1] + seat[1], o[2]]
-  return e.fire
-    ? { p, rate: 6, size: [1.0, 6.5], rise: 1.9, life: 7.5, spread: 0.7, dark: 0.06, fire: true }
-    : { p, rate: 3, size: [0.6, 3.8], rise: 1.1, life: 5.5, spread: 0.4, dark: 0.2 }
-})
-const PLUMES = [
-  ...WRECK_PLUMES,
-  { p: [-62, 4, -44], rate: 5, size: [6, 22], rise: 3.4, life: 14, spread: 3, dark: 0.12 },
-  { p: [58, 4, 26], rate: 4, size: [5, 18], rise: 3, life: 13, spread: 2.5, dark: 0.14 },
-  { p: [24, 4, -70], rate: 4, size: [7, 24], rise: 3.6, life: 15, spread: 3.5, dark: 0.11 },
-  { p: [-40, 3, 64], rate: 3, size: [5, 16], rise: 2.6, life: 12, spread: 2.5, dark: 0.15 },
-]
+/** Fires and smoke of a map: its burning wrecks, and (on Dustline) columns on the horizon. */
+const plumeCache = new Map()
+function plumesOf(map) {
+  if (plumeCache.has(map.id)) return plumeCache.get(map.id)
+  const wrecks = map.entities.filter((e) => e.fire || e.smoke).map((e) => {
+    const seat = e.fire ?? e.smoke
+    const o = yawOffset(e.p, seat[0], seat[2], e.rotY)
+    const p = [o[0], e.p[1] + seat[1], o[2]]
+    return e.fire
+      ? { p, rate: 6, size: [1.0, 6.5], rise: 1.9, life: 7.5, spread: 0.7, dark: 0.06, fire: true }
+      : { p, rate: 3, size: [0.6, 3.8], rise: 1.1, life: 5.5, spread: 0.4, dark: 0.2 }
+  })
+  const horizon =
+    map.id === 'dustline'
+      ? [
+          { p: [-62, 4, -44], rate: 5, size: [6, 22], rise: 3.4, life: 14, spread: 3, dark: 0.12 },
+          { p: [58, 4, 26], rate: 4, size: [5, 18], rise: 3, life: 13, spread: 2.5, dark: 0.14 },
+          { p: [24, 4, -70], rate: 4, size: [7, 24], rise: 3.6, life: 15, spread: 3.5, dark: 0.11 },
+          { p: [-40, 3, 64], rate: 3, size: [5, 16], rise: 2.6, life: 12, spread: 2.5, dark: 0.15 },
+        ]
+      : []
+  const list = [...wrecks, ...horizon]
+  plumeCache.set(map.id, list)
+  return list
+}
+/** Most plumes any map has (the spawn accumulators are sized for it). */
+const MAX_PLUMES = 32
 /** Wind that bends the columns (matches the drifting sand). */
 const PLUME_WIND = [2.0, 0, 0.88]
 
@@ -242,7 +269,8 @@ export function Effects() {
     for (const t of tracers) group.add(t.mesh)
     for (const d of decals) group.add(d)
     for (const l of lights) group.add(l.light)
-    return { dust, glow, plume, plumeAcc: PLUMES.map(() => Math.random()), fireAcc: PLUMES.map(() => Math.random()), emberAcc: PLUMES.map(() => Math.random()), tracers, decals, decalCursor: 0, lights, group }
+    const acc = () => Array.from({ length: MAX_PLUMES }, () => Math.random())
+    return { dust, glow, plume, plumeAcc: acc(), fireAcc: acc(), emberAcc: acc(), tracers, decals, decalCursor: 0, lights, group }
   }, [])
 
   useEffect(() => {
@@ -428,9 +456,18 @@ export function Effects() {
     sys.dust.material.uniforms.uScale.value = scale
     sys.glow.material.uniforms.uScale.value = scale
     sys.dust.update(step)
-    // Keep the war fires burning.
+    // Keep the war fires burning (a new map starts with none of the old one's smoke).
     sys.plume.material.uniforms.uScale.value = scale
-    PLUMES.forEach((pl, i) => {
+    const map = activeMap()
+    if (sys.mapId !== map.id) {
+      if (sys.mapId) {
+        sys.plume.clear()
+        sys.glow.clear()
+        sys.dust.clear()
+      }
+      sys.mapId = map.id
+    }
+    plumesOf(map).forEach((pl, i) => {
       sys.plumeAcc[i] += pl.rate * step
       while (sys.plumeAcc[i] >= 1) {
         sys.plumeAcc[i] -= 1

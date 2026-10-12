@@ -26,12 +26,12 @@ import { RELOAD_KEYS } from '../../audio/bank.js'
 import { sfx } from '../../audio/sfx.js'
 import { ColorGrade } from '../ColorGrade.js'
 import { useBloxityStore } from '../../bloxity/store.js'
-import { useGameStore } from '../../store/gameStore.js'
+import { activeMapId, useActiveMap, useGameStore } from '../../store/gameStore.js'
 import { createWeaponModel, weaponMaterials } from '../models/weaponModels.js'
 import { makeArm, placeArm } from './arms.js'
 import { buildBloxArms, dressArm } from './bloxArms.js'
 import { runtime } from '../runtime.js'
-import { SUN_DIR } from '../environment.js'
+import { envFor } from '../environment.js'
 import { flareTexture } from '../world/textures.js'
 
 /**
@@ -381,11 +381,11 @@ export function ViewModel() {
     const scene = new Scene()
     const camera = new PerspectiveCamera(62, 1, 0.01, 10)
     scene.add(camera)
-    scene.add(new AmbientLight('#8a6a52', 0.35))
-    scene.add(new HemisphereLight('#ffe2bd', '#4a3a2c', 0.65))
-    const sun = new DirectionalLight('#ffcf94', 1.2)
-    sun.position.copy(SUN_DIR).multiplyScalar(5).add(new Vector3(0, 2, 2))
-    scene.add(sun)
+    // Lit like the map you're on (see the effect below).
+    const ambient = new AmbientLight()
+    const hemi = new HemisphereLight()
+    const sun = new DirectionalLight()
+    scene.add(ambient, hemi, sun)
     // A studio rig that turns with the view so the gun always reads well: warm key
     // over the shoulder, cool rim from beyond the muzzle, soft fill from the left.
     const aim = new Object3D()
@@ -483,8 +483,23 @@ export function ViewModel() {
       drum: 0,
       drumTarget: 0,
       lastSince: 1,
+      lights: { ambient, hemi, sun },
     }
   }, [])
+
+  const mapId = useActiveMap().id
+  useEffect(() => {
+    const { ambient, hemi, sun } = vm.lights
+    const env = envFor(mapId)
+    ambient.color.set(env.vm.ambient[0])
+    ambient.intensity = env.vm.ambient[1]
+    hemi.color.set(env.vm.hemi[0])
+    hemi.groundColor.set(env.vm.hemi[1])
+    hemi.intensity = env.vm.hemi[2]
+    sun.color.set(env.vm.sun[0])
+    sun.intensity = env.vm.sun[1]
+    sun.position.copy(env.sunDir).multiplyScalar(5).add(new Vector3(0, 2, 2))
+  }, [vm, mapId])
 
   useEffect(() => {
     runtime.vm = vm
@@ -940,7 +955,10 @@ export function RenderPipeline() {
     const graded = grade && quality !== 'low'
     // Shader warm-up compiles against whatever target the frame is drawn into.
     runtime.gradeTarget = graded ? grade.target : null
-    if (graded) grade.begin(renderer)
+    if (graded) {
+      grade.setLook(envFor(activeMapId()).grade)
+      grade.begin(renderer)
+    }
     else renderer.clear()
     renderer.render(scene, camera)
     const vm = runtime.vm

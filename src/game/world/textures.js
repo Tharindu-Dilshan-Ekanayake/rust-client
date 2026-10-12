@@ -799,3 +799,6 @@ export const pipelineTexture = () =>
     })
     return finish(c)
   })
+
+/** The painting helpers, for the other maps' texture sets. */
+export { cached, canvas, finish, hex, makeFbm, makeNoise, mix, paint }
