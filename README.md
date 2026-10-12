@@ -2,7 +2,23 @@
 
 **Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
 with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch or
-Free-for-all, on *Dustline Pumpstation* — a 60 × 60 m oil yard in a hazy desert, styled after
+Free-for-all, on two maps (picked on the *Find a match* screen, see [Maps](#maps)).
+
+*Atomic Acres* (84 × 84 m, the default) is a 1950s test-site suburb. A school
+bus and a moving truck stand in the cul-de-sac at its centre; you can walk
+through the bus (doors open at both ends, every window down) and up the truck's
+ramp into its trailer full of boxes. Across the circle face the two family
+houses — the yellow one (stone chimney, carport) to the west and the teal-green
+one (white upper storey with shutters, garage) to the east — two storeys each,
+stairs inside, upstairs windows over the cul-de-sac, and a door upstairs out
+onto the carport or garage roof. Behind them are the fenced backyards where the
+teams spawn. Round about: a modern orange house and a park with the town sign
+to the north, a water tower with a clock in the north-west (one ladder up to its
+deck), a cottage and an empty pool with its pool house to the south, and the
+road out, closed by a barricade and an army jeep. Mannequins stand about the
+place. A chain-link fence closes the town in; past it, desert and mountains.
+
+*Dustline Pumpstation* is a 60 × 60 m oil yard in a hazy desert, styled after
 MW's Rust. In the middle stands the refinery: a corrugated pump hall with an
 open bay, a deck over them reached by a conveyor ramp, a clad process tower with
 the company plate and a burning flare stack, and a raised tank platform. The
@@ -26,6 +42,24 @@ Hornet machine pistol or the Warhead RL rocket launcher) and a tactical, and eac
 gun takes attachments: optics (red dot, holo), muzzle (suppressor, compensator)
 and extended mags. Aiming lines up whatever optic is fitted with the centre of
 the screen; suppressed shots are quiet and never show on enemy minimaps.
+
+## Maps
+
+Each map is data in `shared/` (`map.js` for Dustline, `mapAcres.js` for
+Atomic Acres, helpers in `mapKit.js`), listed in `shared/maps.js`: its
+colliders, ladders, spawns, resupply crates, bot navigation hints and bounds.
+The client draws the map on screen (`world/MapScene.jsx` → `world/DustlineMap.jsx`
+or `world/acres/`) with that map's sky and light (`game/environment.js`); the
+minimap, ladders, effects and menu camera all follow the active map.
+
+- The map picked in *Find a match* is saved and shown behind the menus. Quick
+  play only matches rooms on that map; a private room opens on it; joining by key
+  puts you on the room's map, whatever you had picked.
+- Atomic Acres houses are built from one description (`HOUSES` in
+  `mapAcres.js`): the same wall pieces make the colliders and the art, so every
+  door, window and stairwell lines up.
+- The name and signage are original (no other game's trademarks); the layout
+  follows the classic suburban cul-de-sac.
 
 ## Ranks
 
@@ -174,13 +208,14 @@ rise from the burnt-out APC and beyond the walls.
 
 ```
 src/
-  shared/          copied from the server — weapons, map, hitboxes, constants
+  shared/          copied from the server — weapons, maps, hitboxes, constants
   store/           zustand: screens, classes (localStorage), settings, HUD
   net/network.js   Colyseus connection, snapshot interpolation, server events
   audio/sfx.js     synthesised Web Audio sounds (no audio files)
   game/
     GameCanvas.jsx scene root; camera director; viewmodel render pass
-    world/         the map: procedural textures, structures, props, colliders
+    world/         the maps: procedural textures, structures, props, colliders
+      acres/       Atomic Acres: houses, vehicles, props, ground, water tower
     player/        LocalPlayer (character controller), weapons, viewmodel, input
     remote/        other players (Bloxity avatars, aim pose, glint, nameplates)
     fx/            tracers, impacts, explosions, smoke clouds, grenades, pickups
@@ -232,6 +267,22 @@ Built to run smoothly on low-end PCs without hitches:
   the default-attachment gun standing in; your own class's guns are built while
   you're still in the menus.
 - The sound bank is synthesised in a Web Worker, off the main thread.
+- **Atomic Acres** draws in ~35–55 calls (~100k triangles) from anywhere on the
+  map, against ~90–125 for Dustline:
+  - Every untextured material uses one of four finishes (matte, satin, gloss,
+    metal; `world/acres/materials.js`), so all the paint of a finish is one
+    vertex-coloured batch; the batching cell (96 m) holds the whole town.
+  - Its art is built straight into one vertex list per material
+    (`world/acres/pieces.js`), no per-piece geometry, and kept: going back to
+    a map reuses it. The other map's textures are painted in idle time in the
+    menus (`world/prewarm.js`), and both maps keep the same lights and rock
+    shader, so switching compiles no shaders.
+- No z-fighting: ground layers sit centimetres apart with depth offsets
+  (`acres.layer`), signs are offset from their boards, overlapping floors and
+  slabs are cut apart before drawing, and the camera's near plane is 10 cm.
+  (To check: shoot the same view twice with the camera moved 2 mm and diff
+  the two; coplanar faces flicker between them, edges barely move.)
+- Empty particle pools skip their update and draw.
 
 Measured (Playwright, online match with 7 bots, uncapped): High went from ~51 to
 ~100 FPS on the dev machine, and from 3 to 10 FPS with Chrome's 4x CPU
@@ -239,7 +290,8 @@ throttle; joining a match went from two ~0.5 s freezes to nothing over ~0.15 s.
 
 ## Dev tools
 
-- `/?preview=map` — orbit the map; pin a view with `&cam=x,y,z&look=x,y,z`.
+- `/?preview=map` — orbit the map; pin a view with `&cam=x,y,z&look=x,y,z`,
+  pick it with `&map=acres` or `&map=dustline`.
 - `/?preview=guns` — every weapon with a spread of attachments (`&spin`,
   `&only=N` for a close-up).
 - `/?preview=avatars` — every remote-player pose side by side (`&view=side`),

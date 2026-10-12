@@ -98,6 +98,8 @@ const fragmentShader = /* glsl */ `
   }
 `
 
+const LOOK_KEYS = ['exposure', 'contrast', 'saturation', 'shadowTint', 'highlightTint', 'vignette', 'bleach', 'grain', 'dust', 'lift']
+
 export class ColorGrade {
   /** `samples`: MSAA on the HDR target (4 on High, 2 below: much cheaper on integrated GPUs). */
   constructor({ samples = 4 } = {}) {
@@ -124,12 +126,23 @@ export class ColorGrade {
       depthWrite: false,
       toneMapped: false,
     })
+    /** The war-film look above, to go back to after a map with its own. */
+    this.base = Object.fromEntries(LOOK_KEYS.map((k) => [k, this.material.uniforms[k].value]))
+    this.look = null
     this.scene = new Scene()
     const quad = new Mesh(new PlaneGeometry(2, 2), this.material)
     quad.frustumCulled = false
     this.scene.add(quad)
     this.camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
     this._size = new Vector2()
+  }
+
+  /** A map's own grade (environment.js), or null for the default. Cheap to call every frame. */
+  setLook(look) {
+    if (look === this.look) return
+    this.look = look
+    const values = look ?? this.base
+    for (const k of LOOK_KEYS) if (values[k] !== undefined) this.material.uniforms[k].value = values[k]
   }
 
   /** Whether this renderer can keep an HDR (half-float) target; otherwise skip grading. */

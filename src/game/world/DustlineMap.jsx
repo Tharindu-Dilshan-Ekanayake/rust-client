@@ -1,9 +1,6 @@
-import { useRapier } from '@react-three/rapier'
-import { memo, useEffect } from 'react'
+import { memo } from 'react'
 
-import { interactionGroups } from '../../shared/constants.js'
 import { buildColliders, ENTITIES } from '../../shared/map.js'
-import { runtime } from '../runtime.js'
 import {
   AmmoCrate,
   Backdrop,
@@ -21,6 +18,7 @@ import {
 } from './props.jsx'
 import { Apc, CamoNet, Culvert, Decor, Lamp, Pole, PowerLines, Rock } from './decor.jsx'
 import { DeckTank, Ground } from './ground.jsx'
+import MapColliders from './MapColliders.jsx'
 import { Refinery } from './refinery.jsx'
 import { Ruin } from './ruins.jsx'
 import { CarWreck, PipeStack, Tanker } from './wrecks.jsx'
@@ -68,51 +66,13 @@ const RENDERERS = {
 }
 
 /**
- * Builds the map's static colliders straight into the Rapier world from the shared
- * collider list — the exact list the server raycasts against.
- */
-function MapColliders() {
-  const { world, rapier } = useRapier()
-  useEffect(() => {
-    const created = buildColliders().map((c) => {
-      const desc =
-        c.shape === 'box'
-          ? rapier.ColliderDesc.cuboid(c.half[0], c.half[1], c.half[2])
-          : rapier.ColliderDesc.cylinder(c.halfHeight, c.r)
-      desc
-        .setTranslation(c.p[0], c.p[1], c.p[2])
-        .setRotation({ x: c.q[0], y: c.q[1], z: c.q[2], w: c.q[3] })
-        .setCollisionGroups(interactionGroups(c.group, 0xffff))
-        .setFriction(0.8)
-      return world.createCollider(desc)
-    })
-    runtime.world = world
-    runtime.rapier = rapier
-    return () => {
-      for (const col of created) {
-        try {
-          world.removeCollider(col, false)
-        } catch {
-          // World already torn down.
-        }
-      }
-      if (runtime.world === world) {
-        runtime.world = null
-        runtime.rapier = null
-      }
-    }
-  }, [world, rapier])
-  return null
-}
-
-/**
  * Everything static: entities, ground, backdrop and their physics. The visuals
  * are batched into a few hundred merged meshes after mounting.
  */
 export const DustlineMap = memo(function DustlineMap({ physics = true }) {
   return (
     <group>
-      {physics && <MapColliders />}
+      {physics && <MapColliders colliders={buildColliders} />}
       <StaticBatcher>
         <Backdrop />
         {ENTITIES.map((e, i) => {

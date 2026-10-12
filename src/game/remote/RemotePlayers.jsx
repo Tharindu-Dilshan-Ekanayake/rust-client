@@ -5,7 +5,7 @@ import { Object3D, Vector3 } from 'three'
 import { sfx } from '../../audio/sfx.js'
 import { renderTime, sampleRemote } from '../../net/network.js'
 import { PLAYER } from '../../shared/constants.js'
-import { ladderAt } from '../../shared/map.js'
+import { activeMap } from '../../store/gameStore.js'
 import { parseKit } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { createWeaponLod, createWeaponModel, hasWeaponModel, prepareWeaponModel } from '../models/weaponModels.js'
@@ -125,7 +125,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     }
 
     // On a ladder the body faces it, whichever way the climber is looking.
-    const onLadder = alive && r.climbing ? ladderAt(r.pos.x, r.pos.y, r.pos.z) : null
+    const onLadder = alive && r.climbing ? activeMap().ladderAt(r.pos.x, r.pos.y, r.pos.z) : null
     if (onLadder) g.rotation.y = Math.atan2(-onLadder.exitDir[0], -onLadder.exitDir[2]) + Math.PI
 
     // --- Stance blends --------------------------------------------------------------

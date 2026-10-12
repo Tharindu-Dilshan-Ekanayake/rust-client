@@ -3,37 +3,53 @@ import { useEffect, useState } from 'react'
 
 import { useBloxity } from '../bloxity/BloxityContext'
 import { MAX_PLAYERS } from '../shared/constants.js'
-import { MAP_NAME } from '../shared/map.js'
-import { useGameStore } from '../store/gameStore.js'
+import { useActiveMap, useGameStore } from '../store/gameStore.js'
 import { Button } from './common.jsx'
+import { MapPicker } from './MapPicker.jsx'
 import { goFullscreen } from './mobile.js'
 import { IS_TOUCH } from '../game/player/input.js'
 import { RankCard } from './Progression.jsx'
 
-const TIPS = [
+const COMMON_TIPS = [
   ['Cook grenades', ' by holding G — release to throw. Hold too long and it goes off in your hand.'],
-  ['Smoke blocks bot vision.', ' Pop one to cross the open yard round the refinery.'],
   ['Hold Shift', ' while scoped with the Longhaul to steady your breath.'],
-  ['The derrick ladder', ' is the only way up it — and you can’t shoot while climbing.'],
-  ['Run up the refinery conveyor', ' onto its deck; ladders go on up to the tank platform and the tower top.'],
-  ['The container stacks have ladders.', ' Walk off the top onto one to slide back down.'],
   ['Press V', ' to whip out the knife and slash with any weapon. Close the gap and it lunges.'],
   ['Change class with B', ' any time — it applies on your next spawn.'],
   ['Sprint and tap C', ' to slide into cover. Jump out of a slide to keep the speed.'],
   ['Hold C or press Ctrl', ' to go prone — steadier aim, smaller target.'],
   ['Dead players drop ammo.', ' Walk over the green boxes to resupply.'],
-  ['The control shack', ' has an ammo crate that refills everything.'],
   ['Flashbangs', ' hit hardest if you’re looking at them. Turn away!'],
-  ['The fallen end of the pipeline', ' is a ramp — run up it and along the top of the pipe by the north wall.'],
 ]
+const MAP_TIPS = {
+  dustline: [
+    ['Smoke blocks bot vision.', ' Pop one to cross the open yard round the refinery.'],
+    ['The derrick ladder', ' is the only way up it — and you can’t shoot while climbing.'],
+    ['Run up the refinery conveyor', ' onto its deck; ladders go on up to the tank platform and the tower top.'],
+    ['The container stacks have ladders.', ' Walk off the top onto one to slide back down.'],
+    ['The control shack', ' has an ammo crate that refills everything.'],
+    ['The fallen end of the pipeline', ' is a ramp — run up it and along the top of the pipe by the north wall.'],
+  ],
+  acres: [
+    ['Upstairs windows', ' in both houses look right down on the cul-de-sac.'],
+    ['Step out onto the carport', ' (yellow house) or the garage roof (green house) from the upstairs doors.'],
+    ['The moving truck is open', ' — run up its ramp and fight from among the boxes.'],
+    ['The school bus', ' has its doors open front and back, and every window down.'],
+    ['Climb the water tower', ' for a view of the whole town. The ladder is the only way up.'],
+    ['The pool house and the garden shed', ' have ammo crates that refill everything.'],
+    ['The pool is empty.', ' Drop in for cover — the steps are at the shallow end.'],
+    ['Not everyone in town is real.', ' Watch out for the mannequins.'],
+  ],
+}
+const tipsFor = (mapId) => [...COMMON_TIPS, ...(MAP_TIPS[mapId] ?? [])]
 
 function Logo({ small = false }) {
+  const map = useActiveMap()
   return (
     <div className="dl-logo" style={small ? { transform: 'scale(0.6)', transformOrigin: 'left bottom' } : undefined}>
       <div className="big">
         MODERN <span>GUNS</span>
       </div>
-      <div className="sub">{MAP_NAME.toUpperCase()}</div>
+      <div className="sub">{map.name.toUpperCase()}</div>
     </div>
   )
 }
@@ -42,19 +58,21 @@ export function LoadingScreen() {
   const { progress, active } = useProgress()
   const loaded = useGameStore((s) => s.loaded)
   const { game } = useBloxity()
-  const [tip, setTip] = useState(() => Math.floor(Math.random() * TIPS.length))
+  const map = useActiveMap()
+  const tips = tipsFor(map.id)
+  const [tip, setTip] = useState(() => Math.floor(Math.random() * tips.length))
   const [minDone, setMinDone] = useState(false)
   const [shown, setShown] = useState(5)
 
   useEffect(() => {
-    game.loadingStep('Loading Dustline Pumpstation…')
-    const a = setInterval(() => setTip((t) => (t + 1) % TIPS.length), 3800)
+    game.loadingStep(`Loading ${map.name}…`)
+    const a = setInterval(() => setTip((t) => (t + 1) % tips.length), 3800)
     const b = setTimeout(() => setMinDone(true), 1800)
     return () => {
       clearInterval(a)
       clearTimeout(b)
     }
-  }, [game])
+  }, [game, map.name, tips.length])
 
   // Real asset progress when the loader is busy, otherwise a smooth creep so the
   // bar never sits still.
@@ -82,7 +100,7 @@ export function LoadingScreen() {
   const editing = useGameStore((s) => s.editorFromLoading)
   if (editing) return null
 
-  const [b, rest] = TIPS[tip]
+  const [b, rest] = tips[tip % tips.length]
   return (
     <div className="dl-screen dl-loading">
       <Logo />
@@ -178,14 +196,13 @@ export function MainMenu() {
           </div>
         )}
       </div>
+      {/* Pick the map right here; the scene behind the menu switches to it. */}
       <div className="dl-panel dl-mapcard dl-slide-up">
-        <div className="dl-label">Map</div>
-        <div className="dl-h" style={{ fontSize: 24 }}>
-          {MAP_NAME}
+        <div className="dl-label">
+          <span>Map</span>
+          <span className="hint">{IS_TOUCH ? 'Tap' : 'Click'} to change</span>
         </div>
-        <div className="dl-muted" style={{ fontSize: 12, marginTop: 4 }}>
-          Abandoned desert pumping station · sunset · 45 × 45 m
-        </div>
+        <MapPicker compact />
       </div>
     </div>
   )

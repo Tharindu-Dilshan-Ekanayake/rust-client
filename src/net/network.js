@@ -18,6 +18,7 @@ import {
   TEAM_LABELS,
   TEAM_SELECT_TIMEOUT,
 } from '../shared/constants.js'
+import { isMapId, MAPS } from '../shared/maps.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { currentRank, getGame, toWireClass, useGameStore } from '../store/gameStore.js'
 import { DIRECT_URL, openRoom, USE_MATCHMAKER } from './endpoint.js'
@@ -81,17 +82,17 @@ class Network {
     return this.room?.sessionId ?? ''
   }
 
-  /** Public matchmaking: fill an open room of this mode, or open a new one. */
-  join(mode) {
-    this.retry = () => this.join(mode)
-    return this.connect(mode, '', (client, opts) => client.joinOrCreate(ROOM_NAME, { mode, ...opts }))
+  /** Public matchmaking: fill an open room of this mode on this map, or open a new one. */
+  join(mode, map = getGame().mapChoice) {
+    this.retry = () => this.join(mode, map)
+    return this.connect(mode, '', (client, opts) => client.joinOrCreate(ROOM_NAME, { mode, map, ...opts }))
   }
 
   /** Opens a private room (hidden from matchmaking); friends join with its key. */
-  createPrivate({ mode, maxPlayers, bots }) {
-    this.retry = () => this.createPrivate({ mode, maxPlayers, bots })
+  createPrivate({ mode, maxPlayers, bots, map = getGame().mapChoice }) {
+    this.retry = () => this.createPrivate({ mode, maxPlayers, bots, map })
     return this.connect(mode, '', async (client, opts) => {
-      const room = await client.create(ROOM_NAME, { mode, private: true, maxPlayers, bots, ...opts })
+      const room = await client.create(ROOM_NAME, { mode, private: true, maxPlayers, bots, map, ...opts })
       // A server from before private rooms ignores the option and hands back an
       // ordinary room with a random id: don't pretend that worked.
       if (!ROOM_KEY_RE.test(room.roomId)) {
@@ -192,6 +193,7 @@ class Network {
       matchEnd: null,
       team: '',
       roomCode: '',
+      roomMap: '',
       maxPlayers: MAX_PLAYERS,
       connection: { status: 'idle', error: '' },
     })
@@ -263,7 +265,16 @@ class Network {
     room.onError((code, message) => console.warn('[net] room error', code, message))
 
     const on = (type, fn) => room.onMessage(type, fn)
-    on('welcome', (m) => useGameStore.setState({ myId: m.id, mode: m.mode, roomCode: m.code ?? '', maxPlayers: m.max ?? MAX_PLAYERS }))
+    on('welcome', (m) =>
+      useGameStore.setState({
+        myId: m.id,
+        mode: m.mode,
+        roomCode: m.code ?? '',
+        maxPlayers: m.max ?? MAX_PLAYERS,
+        // The room's map (a server from before maps only sends its name).
+        roomMap: isMapId(m.mapId) ? m.mapId : (Object.values(MAPS).find((map) => map.name === m.map)?.id ?? 'dustline'),
+      }),
+    )
     on('ping', (m) => room.send('pong', { t: m.t }))
     on('notice', (m) => getGame().pushNotice(String(m.text ?? ''), Number(m.ms) || 4000, 'warn'))
     on('team_select', (m) =>

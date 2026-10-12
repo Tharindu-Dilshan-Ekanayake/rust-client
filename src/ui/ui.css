@@ -373,8 +373,19 @@
   position: absolute;
   right: 26px;
   bottom: 26px;
-  padding: 14px 18px;
-  min-width: 260px;
+  width: 330px;
+  padding: 12px 14px 14px;
+}
+.dl-mapcard .dl-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 9px;
+}
+.dl-mapcard .dl-label .hint {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--muted);
 }
 
 /* ---- generic two-column layout (class editor, etc.) ---------------------------- */
@@ -1595,6 +1606,118 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   min-height: 300px;
+}
+
+/* Map picker: two tiles above the mode cards, the map's plan as a thumbnail. */
+.dl-mappick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.dl-maptile {
+  pointer-events: auto;
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  min-width: 0;
+  text-align: left;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  transition:
+    border-color var(--fast),
+    background var(--fast),
+    transform var(--fast);
+}
+.dl-maptile img {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.dl-maptile .text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.dl-maptile strong {
+  font-family: var(--head);
+  font-size: 17px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dl-maptile small {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dl-maptile:hover,
+.dl-maptile:focus-visible {
+  border-color: var(--accent-dim);
+  transform: translateY(-2px);
+  outline: none;
+}
+.dl-maptile.on {
+  border-color: var(--accent);
+  background: rgba(242, 163, 58, 0.12);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.dl-maptile.on strong {
+  color: var(--accent);
+}
+.dl-maptile .dl-tag.new {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #1a1206;
+  background: var(--accent);
+}
+/* Stacked and smaller on the main menu's map card. */
+.dl-mappick.compact {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.dl-mappick.compact .dl-maptile {
+  padding: 8px 10px;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.dl-mappick.compact .dl-maptile.on {
+  background: rgba(242, 163, 58, 0.14);
+}
+.dl-mappick.compact .dl-maptile img {
+  width: 46px;
+  height: 46px;
+}
+.dl-mappick.compact .dl-maptile strong {
+  font-size: 15px;
+}
+.dl-mappick.compact .dl-maptile small {
+  font-size: 11px;
+}
+.dl-mappick.compact .dl-maptile .dl-tag.new {
+  top: 6px;
+  right: 6px;
+}
+/* Bigger targets for thumbs. */
+.dl-touch .dl-mappick.compact .dl-maptile {
+  padding: 12px 12px;
+}
+.dl-touch .dl-mappick.compact .dl-maptile img {
+  width: 56px;
+  height: 56px;
 }
 
 /* Mode cards: emblem, chips, title, a call to action that lights up. */

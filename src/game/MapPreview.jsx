@@ -2,14 +2,17 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Physics } from '@react-three/rapier'
 import { Suspense, useEffect } from 'react'
 
+import { isMapId } from '../shared/maps.js'
+import { useGameStore } from '../store/gameStore.js'
+
 import MenuCamera from './MenuCamera.jsx'
 import SceneEnvironment from './SceneEnvironment.jsx'
-import DustlineMap from './world/DustlineMap.jsx'
+import MapScene from './world/MapScene.jsx'
 
 /**
  * Dev-only map viewer: `/?preview=map` orbits, or pin a view with
- * `/?preview=map&cam=x,y,z&look=x,y,z`. Handy for checking art against colliders
- * without joining a match.
+ * `/?preview=map&cam=x,y,z&look=x,y,z`; `&map=acres` picks the map. Handy for
+ * checking art against colliders without joining a match.
  */
 function FixedCamera({ cam, look, fov }) {
   const camera = useThree((s) => s.camera)
@@ -30,13 +33,17 @@ export function MapPreview() {
   const cam = parse('cam')
   const look = parse('look') ?? [0, 2, 0]
   const fov = Number(params.get('fov') || 60)
+  const map = params.get('map')
+  useEffect(() => {
+    if (isMapId(map)) useGameStore.setState({ roomMap: map })
+  }, [map])
   return (
     <div style={{ position: 'fixed', inset: 0 }}>
-      <Canvas shadows="percentage" camera={{ fov, near: 0.05, far: 600 }} dpr={[1, 1.5]}>
+      <Canvas shadows="percentage" camera={{ fov, near: 0.1, far: 600 }} dpr={[1, 1.5]}>
         <Suspense fallback={null}>
           <SceneEnvironment />
           <Physics>
-            <DustlineMap />
+            <MapScene />
           </Physics>
         </Suspense>
         {cam ? <FixedCamera cam={cam} look={look} fov={fov} /> : <MenuCamera />}

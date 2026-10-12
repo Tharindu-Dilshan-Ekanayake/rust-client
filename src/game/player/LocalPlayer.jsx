@@ -7,7 +7,7 @@ import { sfx } from '../../audio/sfx.js'
 import { net } from '../../net/network.js'
 import { MOVE_SEND_INTERVAL_MS, PLAYER, PLAYER_GROUPS, WALK_GROUPS } from '../../shared/constants.js'
 import { hitboxFor, rayHitbox } from '../../shared/hitbox.js'
-import { ladderAt } from '../../shared/map.js'
+import { activeMap } from '../../store/gameStore.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { castMap } from '../physicsQueries.js'
 import { on, runtime } from '../runtime.js'
@@ -336,7 +336,7 @@ export function LocalPlayer() {
     }
 
     // --- Ladder ----------------------------------------------------------------------
-    const ladder = ladderAt(l.feet.x, l.feet.y, l.feet.z)
+    const ladder = activeMap().ladderAt(l.feet.x, l.feet.y, l.feet.z)
     // > 0 while looking at the ladder (into whatever it's fixed to).
     const facing = ladder ? _fwd.x * ladder.exitDir[0] + _fwd.z * ladder.exitDir[2] : 0
     const wasClimbing = s.climbing

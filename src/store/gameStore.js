@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 
+import { DEFAULT_MAP, getMap, isMapId } from '../shared/maps.js'
 import { rankInfo } from '../shared/progression.js'
 import { CLASS_NAME_MAX, CUSTOM_CLASS_COUNT, PRESET_CLASSES, sanitizeClass } from '../shared/weapons.js'
 
@@ -17,6 +18,7 @@ const LS = {
   lastClass: 'dustline.lastClass',
   settings: 'dustline.settings',
   xp: 'dustline.xp',
+  map: 'dustline.map',
 }
 
 function read(key, fallback) {
@@ -160,6 +162,9 @@ export const useGameStore = create((set, get) => ({
   pendingClass: null,
 
   mode: 'tdm',
+  /** The map picked in the menus (saved), and the map of the room we're in ('' outside one). */
+  mapChoice: isMapId(read(LS.map, '')) ? read(LS.map, '') : DEFAULT_MAP,
+  roomMap: '',
   team: '',
   myId: '',
   /** Private room key ('' in public matchmaking rooms) and the room's player cap. */
@@ -257,6 +262,12 @@ export const useGameStore = create((set, get) => ({
 
   getClass: (id) => get().classes.find((c) => c.id === id) ?? get().classes[0],
 
+  setMapChoice: (id) => {
+    if (!isMapId(id)) return
+    write(LS.map, id)
+    set({ mapChoice: id })
+  },
+
   setSettings: (patch) => {
     const settings = { ...get().settings, ...patch }
     write(LS.settings, settings)
@@ -317,3 +328,12 @@ export const useGameStore = create((set, get) => ({
 }))
 
 export const getGame = () => useGameStore.getState()
+
+/** Id of the map on screen: the room's while in one, otherwise the one picked in the menus. */
+export const activeMapId = (s = useGameStore.getState()) => s.roomMap || s.mapChoice
+
+/** The map on screen (shared/maps.js), outside React. */
+export const activeMap = () => getMap(activeMapId())
+
+/** The map on screen, as a hook. */
+export const useActiveMap = () => getMap(useGameStore((s) => s.roomMap || s.mapChoice))

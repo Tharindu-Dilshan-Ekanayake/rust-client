@@ -103,10 +103,10 @@ export function Pole({ p }) {
 }
 
 /** Sagging wires between consecutive poles, as one line set. */
-export function PowerLines() {
+export function PowerLines({ lines = POWER_LINES }) {
   const geo = useMemo(() => {
     const pts = []
-    for (const line of POWER_LINES) {
+    for (const line of lines) {
       for (let i = 0; i < line.length - 1; i++) {
         const [ax, az] = line[i]
         const [bx, bz] = line[i + 1]
@@ -128,7 +128,7 @@ export function PowerLines() {
     const g = new BufferGeometry()
     g.setAttribute('position', new Float32BufferAttribute(pts, 3))
     return g
-  }, [])
+  }, [lines])
   return (
     <lineSegments geometry={geo}>
       <lineBasicMaterial color="#1c1916" />
