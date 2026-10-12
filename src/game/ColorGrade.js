@@ -11,10 +11,16 @@ import {
 
 /**
  * Final colour pass. The world (and the viewmodel) are rendered into an HDR
- * target; this pass tone-maps it (ACES, as three would), converts to sRGB, then
- * grades it like a grim war film in a dust storm: bleach-bypass contrast,
- * drained colour, sickly green shadows against burnt amber highlights, blacks
- * lifted by the dust in the air, film grain and a heavy vignette.
+ * target; this pass tone-maps it (ACES, as three would), converts to sRGB,
+ * smooths the jagged edges (FXAA), then grades it like a grim war film in a
+ * dust storm: bleach-bypass contrast, drained colour, sickly green shadows
+ * against burnt amber highlights, blacks lifted by the dust in the air, film
+ * grain and a heavy vignette (or with a map's own look, see setLook).
+ *
+ * The target is not multisampled: MSAA on a half-float target cost an
+ * integrated GPU (Radeon 780M) three times the rest of the frame put together
+ * (21 ms against 6 ms at 1080p); FXAA in this same pass costs a fraction of a
+ * millisecond.
  */
 
 const vertexShader = /* glsl */ `
@@ -39,6 +45,7 @@ const fragmentShader = /* glsl */ `
   uniform float time;
   uniform vec3 dust;
   uniform float lift;
+  uniform vec2 texel;
   varying vec2 vUv;
 
   float hash(vec2 p) {
@@ -71,9 +78,42 @@ const fragmentShader = /* glsl */ `
   vec3 toSRGB(vec3 c) {
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
   }
+  vec3 tonemapped(vec2 uv) {
+    return toSRGB(acesFilmic(texture2D(tScene, uv).rgb));
+  }
+  // Brightness for finding edges: the luminance through a one-channel stand-in
+  // for the tone curve (Narkowicz's ACES fit, then gamma 2). Close enough to the
+  // tone-mapped colour's luma to find the same edges, at a fraction of the cost.
+  float edgeLuma(vec2 uv) {
+    float x = dot(texture2D(tScene, uv).rgb, vec3(0.2126, 0.7152, 0.0722)) * exposure;
+    return sqrt(clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0));
+  }
+
+  // FXAA (the compact "FXAA 2" form): find the edge from the corners' luma,
+  // blur along it, and keep the wider blur only if it stays in range.
+  vec3 antialiased(vec2 uv) {
+    const vec3 L = vec3(0.299, 0.587, 0.114);
+    float lNW = edgeLuma(uv + vec2(-1.0, -1.0) * texel);
+    float lNE = edgeLuma(uv + vec2(1.0, -1.0) * texel);
+    float lSW = edgeLuma(uv + vec2(-1.0, 1.0) * texel);
+    float lSE = edgeLuma(uv + vec2(1.0, 1.0) * texel);
+    float lM = edgeLuma(uv);
+    float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
+    float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+    // Flat areas: nothing to smooth (and most of the screen is flat).
+    if (lMax - lMin < max(0.0312, lMax * 0.125)) return tonemapped(uv);
+    vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+    float reduce = max((lNW + lNE + lSW + lSE) * (0.25 / 8.0), 1.0 / 128.0);
+    float rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+    dir = clamp(dir * rcpMin, vec2(-8.0), vec2(8.0)) * texel;
+    vec3 a = 0.5 * (tonemapped(uv + dir * (1.0 / 3.0 - 0.5)) + tonemapped(uv + dir * (2.0 / 3.0 - 0.5)));
+    vec3 b = a * 0.5 + 0.25 * (tonemapped(uv - dir * 0.5) + tonemapped(uv + dir * 0.5));
+    float lB = dot(b, L);
+    return (lB < lMin || lB > lMax) ? a : b;
+  }
 
   void main() {
-    vec3 c = toSRGB(acesFilmic(texture2D(tScene, vUv).rgb));
+    vec3 c = antialiased(vUv);
     float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
     // Split toning: tint the darks and the brights separately.
     c += shadowTint * (1.0 - smoothstep(0.0, 0.5, luma)) + highlightTint * smoothstep(0.5, 1.0, luma);
@@ -101,8 +141,8 @@ const fragmentShader = /* glsl */ `
 const LOOK_KEYS = ['exposure', 'contrast', 'saturation', 'shadowTint', 'highlightTint', 'vignette', 'bleach', 'grain', 'dust', 'lift']
 
 export class ColorGrade {
-  /** `samples`: MSAA on the HDR target (4 on High, 2 below: much cheaper on integrated GPUs). */
-  constructor({ samples = 4 } = {}) {
+  /** `samples`: MSAA on the HDR target. Leave at 0: the pass anti-aliases itself (FXAA). */
+  constructor({ samples = 0 } = {}) {
     this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples })
     this.material = new ShaderMaterial({
       vertexShader,
@@ -121,6 +161,7 @@ export class ColorGrade {
         time: { value: 0 },
         dust: { value: [0.42, 0.36, 0.28] },
         lift: { value: 0.07 },
+        texel: { value: new Vector2(1, 1) },
       },
       depthTest: false,
       depthWrite: false,
@@ -160,6 +201,7 @@ export class ColorGrade {
       this.target.setSize(w, h)
       const a = w / h
       this.material.uniforms.aspect.value.set(a > 1 ? a : 1, a > 1 ? 1 : 1 / a)
+      this.material.uniforms.texel.value.set(1 / w, 1 / h)
     }
     gl.setRenderTarget(this.target)
     gl.clear()

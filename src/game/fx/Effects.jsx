@@ -259,7 +259,9 @@ export function Effects() {
       return m
     })
 
-    const lights = Array.from({ length: 4 }, () => {
+    // Two flash lights, shared by every muzzle flash and blast: each point light
+    // costs every lit pixel on screen, flashing or not.
+    const lights = Array.from({ length: 2 }, () => {
       const l = new PointLight('#ffb35a', 0, 12, 1.8)
       return { light: l, until: 0, start: 0, peak: 0 }
     })

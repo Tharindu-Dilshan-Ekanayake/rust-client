@@ -22,6 +22,19 @@ const _sample = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0 }
 const _v = new Vector3()
 const _local = new Vector3()
 
+/** A player's kit string, parsed once (it's read every frame for every player). */
+const kits = new Map()
+function kitOf(kit) {
+  const key = kit ?? ''
+  let parsed = kits.get(key)
+  if (!parsed) {
+    if (kits.size > 64) kits.clear()
+    parsed = parseKit(key)
+    kits.set(key, parsed)
+  }
+  return parsed
+}
+
 function parseAvatar(json) {
   try {
     const a = json ? JSON.parse(json) : null
@@ -196,7 +209,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
     const weaponId = now - (r.meleeAt ?? -1e9) < 520 ? 'knife' : r.weapon || 'ar'
     // A gun + attachments combination we haven't built yet is built in idle
     // time (a step per frame); the gun with default attachments stands in.
-    let kit = parseKit(r.kit)[weaponId]
+    let kit = kitOf(r.kit)[weaponId]
     if (!hasWeaponModel(weaponId, kit)) {
       prepareWeaponModel(weaponId, kit)
       kit = undefined

@@ -940,19 +940,19 @@ export function ViewModel() {
 }
 
 /**
- * Draws the world, then the viewmodel on top with a fresh depth buffer, then
- * (above Low quality) runs the colour grade over the result.
+ * Draws the world, then the viewmodel on top with a fresh depth buffer, into
+ * the colour grade's HDR target, then grades and anti-aliases it onto the
+ * screen (every quality: the pass costs about the same as drawing straight to
+ * a multisampled canvas). Without half-float targets, it draws straight on.
  */
 export function RenderPipeline() {
   const gl = useThree((s) => s.gl)
-  const quality = useGameStore((s) => s.settings.quality)
-  const samples = quality === 'high' ? 4 : 2
-  const grade = useMemo(() => (ColorGrade.supported(gl) ? new ColorGrade({ samples }) : null), [gl, samples])
+  const grade = useMemo(() => (ColorGrade.supported(gl) ? new ColorGrade() : null), [gl])
   useEffect(() => () => grade?.dispose(), [grade])
 
   useFrame(({ gl: renderer, scene, camera }) => {
     renderer.autoClear = false
-    const graded = grade && quality !== 'low'
+    const graded = Boolean(grade)
     // Shader warm-up compiles against whatever target the frame is drawn into.
     runtime.gradeTarget = graded ? grade.target : null
     if (graded) {

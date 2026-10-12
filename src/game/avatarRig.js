@@ -40,6 +40,8 @@ export function collectRig(root) {
     originalGeometries: {},
     /** bone name -> { bone, origPos, origQuat, origScale } */
     bones: {},
+    /** The rest pose with the proportions applied (see applyProportions). */
+    rest: null,
     hatBone: null,
     backBone: null,
     neckOffsetBindY: 0,
@@ -75,6 +77,10 @@ export function collectRig(root) {
     for (const bone of skeleton.bones) {
       // Proportions are re-applied every frame from these rest values.
       bone.matrixAutoUpdate = true
+      // Bones are posed through their quaternions only: skip three mirroring
+      // every change into `rotation` (an Euler conversion per bone, several
+      // times a frame per player).
+      bone.quaternion._onChange(noop)
       rig.bones[bone.name] = {
         bone,
         origPos: bone.position.clone(),
@@ -334,21 +340,34 @@ export function attachAccessory(rig, kind, object) {
  * ones to sanity-check against the portal.
  */
 export function applyProportions(rig, proportions) {
-  const skeleton = rig.skeleton
-  if (!skeleton || !proportions) return
+  if (!rig.skeleton || !proportions) return
 
-  const height = proportions.height ?? 1
-  const armLength = proportions.armLength ?? 1
-  const headScale = proportions.headScale ?? 1
-  const neckHeight = proportions.neckHeight ?? 1
-  const shoulderWidth = proportions.shoulderWidth ?? 1
-  const torsoScaleX = proportions.torsoScaleX ?? 1
-  const legOffsetX = proportions.legOffsetX ?? 1
+  // The proportioned rest pose only changes with the proportions: it's worked
+  // out when they do, and every other frame the bones are just reset to it.
+  let rest = rig.rest
+  let changed = !rest
+  for (let i = 0; !changed && i < PROPORTIONS.length; i++) changed = (proportions[PROPORTIONS[i]] ?? 1) !== rest.values[i]
+  if (changed) rest = rig.rest = restPose(rig, proportions)
 
   // Overall height is a scale on the character root, not on a bone.
-  rig.root.scale.set(1, height, 1)
+  rig.root.scale.set(1, rest.values[0], 1)
+  for (const pose of rest.bones) {
+    pose.bone.position.copy(pose.position)
+    pose.bone.quaternion.copy(pose.quaternion)
+    pose.bone.scale.copy(pose.scale)
+  }
+}
 
-  for (const bone of skeleton.bones) {
+const PROPORTIONS = ['height', 'armLength', 'headScale', 'neckHeight', 'shoulderWidth', 'torsoScaleX', 'legOffsetX']
+function noop() {}
+
+/** Puts every bone in its rest pose with the proportions applied, and records it. */
+function restPose(rig, proportions) {
+  const values = PROPORTIONS.map((k) => proportions[k] ?? 1)
+  const [height, armLength, headScale, neckHeight, shoulderWidth, torsoScaleX, legOffsetX] = values
+  const bones = []
+
+  for (const bone of rig.skeleton.bones) {
     const rest = rig.bones[bone.name]
     if (!rest) continue
 
@@ -384,7 +403,9 @@ export function applyProportions(rig, proportions) {
       // Not in the SDK preview: leg splay, mirrored about the rig centre.
       bone.position.x = origPos.x * legOffsetX
     }
+    bones.push({ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone(), scale: bone.scale.clone() })
   }
+  return { values, bones }
 }
 
 /* ---------------------------------------------------------------------------
@@ -697,8 +718,14 @@ export function solveArm(rig, side, target, pole) {
  */
 export function solveArms(rig, ik) {
   if (!rig?.skeleton || !ik) return
-  // Once for the whole rig; the solver reads matrixWorld directly from here on.
-  rig.root.updateWorldMatrix(true, true)
-  if (ik.right) solveArm(rig, 'R', ik.right, ik.poleR)
-  if (ik.left) solveArm(rig, 'L', ik.left, ik.poleL)
+  // The solver reads matrixWorld directly: bring each arm (and the chain it
+  // hangs from) up to date, not the whole body; the render does the rest.
+  if (ik.right) {
+    rig.bones.ArmR1?.bone.updateWorldMatrix(true, true)
+    solveArm(rig, 'R', ik.right, ik.poleR)
+  }
+  if (ik.left) {
+    rig.bones.ArmL1?.bone.updateWorldMatrix(true, true)
+    solveArm(rig, 'L', ik.left, ik.poleL)
+  }
 }
