@@ -39,6 +39,14 @@ const MAP_TIPS = {
     ['The pool is empty.', ' Drop in for cover — the steps are at the shallow end.'],
     ['Not everyone in town is real.', ' Watch out for the mannequins.'],
   ],
+  palmwood: [
+    ['The Frame’s top floor is open to the sky', ' — run up the stairs on its east or west side.'],
+    ['The camo deck', ' beside the Frame is low cover in the middle of the loop.'],
+    ['Climb the lookout towers', ' in the corners to see over the roofs. The ladder is the only way up.'],
+    ['The tin shed and the hut', ' have ammo crates that refill everything.'],
+    ['The market stalls', ' have counters to shoot over.'],
+    ['Banana leaves hide you,', ' but they won’t stop a bullet.'],
+  ],
 }
 const tipsFor = (mapId) => [...COMMON_TIPS, ...(MAP_TIPS[mapId] ?? [])]
 

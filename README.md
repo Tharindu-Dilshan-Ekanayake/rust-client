@@ -46,20 +46,31 @@ the screen; suppressed shots are quiet and never show on enemy minimaps.
 ## Maps
 
 Each map is data in `shared/` (`map.js` for Dustline, `mapAcres.js` for
-Atomic Acres, helpers in `mapKit.js`), listed in `shared/maps.js`: its
-colliders, ladders, spawns, resupply crates, bot navigation hints and bounds.
-The client draws the map on screen (`world/MapScene.jsx` → `world/DustlineMap.jsx`
-or `world/acres/`) with that map's sky and light (`game/environment.js`); the
+Atomic Acres, `mapPalmwood.js` for Palmwood, helpers in `mapKit.js`), listed
+in `shared/maps.js`: its colliders, ladders, spawns, resupply crates, bot
+navigation hints and bounds. The client draws the map on screen
+(`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/` or
+`world/palmwood/`) with that map's sky and light (`game/environment.js`); the
 minimap, ladders, effects and menu camera all follow the active map.
+
+- **Palmwood** (76 × 76 m, the newest): a tropical plywood shanty town. A rutted
+  dirt loop runs round the Frame, an unfinished two-storey block whose open top
+  floor (safety mesh on the bays, no roof yet) is reached by stairs up its east
+  and west sides, and a deck under camo netting. Round the loop: the long house
+  (north, Alpha's side), the warehouse and its veranda (east), the market stalls
+  and the bunkhouse (south, Bravo's side), the cookhouse (west), tarp and tin
+  shacks, two lookout towers, banana groves and coconut palms. No team spawn
+  can see the other's (checked eye to eye).
 
 - The map picked in *Find a match* is saved and shown behind the menus. Quick
   play only matches rooms on that map; a private room opens on it; joining by key
   puts you on the room's map, whatever you had picked.
-- Atomic Acres houses are built from one description (`HOUSES` in
-  `mapAcres.js`): the same wall pieces make the colliders and the art, so every
-  door, window and stairwell lines up.
-- The name and signage are original (no other game's trademarks); the layout
-  follows the classic suburban cul-de-sac.
+- Atomic Acres houses (`HOUSES` in `mapAcres.js`) and Palmwood's buildings
+  (`BUILDINGS` in `mapPalmwood.js`) are each built from one description: the
+  same wall pieces make the colliders and the art, so every door, window,
+  stairwell and roof lines up.
+- Names and signage are original (no other game's trademarks); Atomic Acres'
+  layout follows the classic suburban cul-de-sac.
 
 ## Ranks
 
@@ -296,6 +307,11 @@ Built to run smoothly on low-end PCs without hitches:
     a map reuses it. The other map's textures are painted in idle time in the
     menus (`world/prewarm.js`), and both maps keep the same lights and rock
     shader, so switching compiles no shaders.
+- **Palmwood** is the cheapest map to draw: ~37 calls for the whole town (19 in
+  the sun's shadow pass on High). Every leaf in it (banana leaves, palm fronds,
+  grass tufts, bushes) is a bent strip in one foliage atlas, so all the foliage
+  is one material; plywood, tin and tarps batch whatever their tint; the loop is
+  one strip whose texture follows the curve, so the wheel ruts do too.
 - No z-fighting: ground layers sit centimetres apart with depth offsets
   (`acres.layer`), signs are offset from their boards, overlapping floors and
   slabs are cut apart before drawing, and the camera's near plane is 10 cm.
@@ -311,6 +327,8 @@ Measured (Playwright, online match with 7 bots, 1080p, uncapped):
 | Atomic Acres, High | 35 → 95 FPS | 167 → 263 FPS |
 | Dustline, Low | 103 FPS | 264 FPS |
 | Dustline, High | 78 FPS | 221 FPS |
+| Palmwood, Low | 135 FPS | 346 FPS |
+| Palmwood, High | 112 FPS | 292 FPS |
 
 The longest frame in a 12 s fight went from 280–450 ms (shader first use) to
 under 50 ms on the 780M and under 17 ms on the RTX. Earlier: High went from ~51
