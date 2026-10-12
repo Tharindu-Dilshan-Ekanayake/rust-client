@@ -1,13 +1,13 @@
-import { Box3, BufferGeometry, DoubleSide, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from 'three'
+import { Box3, BufferGeometry, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from 'three'
 
 import { assetUrls, BASE_BODY_URL, isRealId, skinIdOrDefault, skinTextureUrl } from '../../bloxity/avatarAssets'
-import { loadOBJ, loadPartGLB, loadTexture } from '../../bloxity/avatarLoader'
+import { loadPartGLB, loadTexture } from '../../bloxity/avatarLoader'
 
 /**
  * First-person arms made from the player's own Bloxity avatar: the arm part
  * they wear (or the base body's), in their skin texture with the shirt drawn
- * on (so the sleeves match), and their hand accessory (gloves, a watch...) on
- * the hand end, mirrored for the right hand the way the SDK wears it.
+ * on (so the sleeves match). Hand accessories (gloves, watches...) are left off
+ * in this game: they don't sit right on a first-person arm.
  *
  * A Bloxity arm is a block from shoulder to hand. Here it's turned to point
  * forward with its front face up, its hand end just past the wrist point that
@@ -48,18 +48,15 @@ function plain(geometry) {
 /**
  * Model space (avatar facing +Z, arms hanging down, ~6.4 units tall) to the
  * arm's first-person frame, for an arm whose hand end is centred on `hand`.
- * `mirror` flips across x first (the right-hand copy of a hand accessory).
  */
-function toFirstPerson(hand, scale, length, mirror = false) {
-  const m = new Matrix4()
+function toFirstPerson(hand, scale, length) {
+  return new Matrix4()
     .makeScale(scale, scale, length)
     // Hanging down -> pointing forward, front face up (the shoulder end goes to +Z).
     .multiply(new Matrix4().makeRotationX(Math.PI / 2))
     // Facing +Z -> facing away from us, like the camera: the left arm on the left.
     .multiply(new Matrix4().makeRotationY(Math.PI))
     .multiply(new Matrix4().makeTranslation(-hand.x, -hand.y, -hand.z))
-  if (mirror) m.multiply(new Matrix4().makeScale(-1, 1, 1))
-  return m
 }
 
 /**
@@ -75,13 +72,6 @@ export async function buildBloxArms(equipped) {
   const texture =
     (await loadTexture(skinTextureUrl(equipped))) ?? (await loadTexture(assetUrls.skinTexture(skinIdOrDefault(equipped?.skinId))))
   const skin = new MeshStandardMaterial({ map: texture, roughness: 0.92, metalness: 0 })
-
-  const handId = equipped?.handId
-  const [glove, gloveTexture] = isRealId(handId)
-    ? await Promise.all([loadOBJ(assetUrls.handMesh(handId)), loadTexture(assetUrls.handTexture(handId))])
-    : [null, null]
-  // Mirrored for the right hand, so both faces are drawn.
-  const gloveMaterial = glove ? new MeshStandardMaterial({ map: gloveTexture, roughness: 0.85, metalness: 0, side: DoubleSide }) : null
 
   const out = {}
   for (const [side, cfg] of Object.entries(SIDES)) {
@@ -101,22 +91,9 @@ export async function buildBloxArms(equipped) {
     }
     const arm = plain(source)
     arm.applyMatrix4(toFirstPerson(hand, scale, length))
-    const meshes = [new Mesh(arm, skin)]
-    meshes[0].position.z = -REACH
-
-    if (glove) {
-      // Authored on the left hand; the right hand wears it mirrored across x.
-      const m = toFirstPerson(hand, scale, length, side === 'R')
-      glove.traverse((o) => {
-        if (!o.isMesh) return
-        const g = plain(o.geometry)
-        g.applyMatrix4(m)
-        const mesh = new Mesh(g, gloveMaterial)
-        mesh.position.z = -REACH
-        meshes.push(mesh)
-      })
-    }
-    out[side] = meshes
+    const mesh = new Mesh(arm, skin)
+    mesh.position.z = -REACH
+    out[side] = [mesh]
   }
   return out
 }

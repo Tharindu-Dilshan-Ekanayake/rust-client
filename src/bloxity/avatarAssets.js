@@ -64,9 +64,7 @@ export const assetUrls = {
   hatTexture: (id) => `${AVATAR_CDN}/textures/hats/${id}.png`,
   backMesh: (id) => `${AVATAR_CDN}/items/back/${id}.obj`,
   backTexture: (id) => `${AVATAR_CDN}/textures/back/${id}.png`,
-  /** Hand accessories (gloves, watches...): authored on the left hand, mirrored for the right. */
-  handMesh: (id) => `${AVATAR_CDN}/items/hand/${id}.obj`,
-  handTexture: (id) => `${AVATAR_CDN}/textures/hand/${id}.png`,
+  // No hand accessories (gloves, watches...): this game leaves them off.
 }
 
 /** Clothing the API draws onto the skin texture, in the order the SDK puts it in the URL. */

@@ -128,8 +128,8 @@ Other players see your Bloxity avatar: body parts, the skin texture with your
 shirt, pants and face drawn on (`skinTextureUrl`, the same URL the SDK's
 `getSkinTextureUrl()` builds), hat and back items. In first person the hands on
 the gun, and on ladders, are your own avatar's arms (`game/player/bloxArms.js`):
-the arm part you wear in your skin texture, so the sleeves match your shirt,
-with your hand accessory (gloves...) on the hands. Both update when you change
+the arm part you wear in your skin texture, so the sleeves match your shirt.
+Hand accessories (gloves, watches...) are not shown in this game. Both update when you change
 your avatar in the portal. There's no login or logout in the game: it opens
 signed in to your Bloxity account, or as a Bloxity guest.
 

@@ -498,8 +498,8 @@ export function ViewModel() {
     vm.camera.updateProjectionMatrix()
   }, [size, vm])
 
-  // The hands on the gun are the player's own Bloxity arms (skin, shirt sleeves,
-  // gloves), rebuilt whenever they change their avatar.
+  // The hands on the gun are the player's own Bloxity arms (skin, shirt
+  // sleeves), rebuilt whenever they change their avatar.
   const equipped = useBloxityStore((s) => s.equipped)
   useEffect(() => {
     let cancelled = false
