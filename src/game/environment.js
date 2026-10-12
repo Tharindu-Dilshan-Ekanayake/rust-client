@@ -10,7 +10,8 @@ export const STORM_WIND = [7.2, 0, 3.2]
 /**
  * Sky, light and colour per map (see SceneEnvironment). Dustline is a sunset in
  * a sandstorm; Atomic Acres a bright, slightly hazy desert afternoon with clean
- * colours and long views to the mountains.
+ * colours and long views to the mountains; Palmwood a hot tropical morning,
+ * high sun, blue sky and saturated greens.
  */
 export const ENVIRONMENTS = {
   dustline: {
@@ -57,6 +58,34 @@ export const ENVIRONMENTS = {
       grain: 0.022,
       dust: [0.42, 0.42, 0.44],
       lift: 0.025,
+    },
+  },
+  palmwood: {
+    sunDir: new Vector3(0.46, 0.76, 0.46).normalize(),
+    fog: '#d2e0e2',
+    fogNear: 55,
+    fogFar: 260,
+    sky: { horizon: '#dbe8ea', mid: '#a6cae6', zenith: '#4686c8', sun: '#fff4dc', storm: 0, below: [0.42, 0.5, 0.34] },
+    hemi: ['#ddeefa', '#5a6a32', 0.95],
+    bounce: ['#cfe0c8', 0.5],
+    ambient: ['#7a7e6a', 0.3],
+    sun: ['#fff2da', 2.9],
+    envIntensity: 0.6,
+    storm: false,
+    shadowSpan: 56,
+    menuCam: { radius: 50, height: 19, look: [0, 3, 0] },
+    vm: { ambient: ['#7a7e70', 0.35], hemi: ['#eef4f8', '#4c5236', 0.7], sun: ['#fff2da', 1.15] },
+    grade: {
+      exposure: 1.04,
+      contrast: 1.08,
+      saturation: 1.12,
+      shadowTint: [-0.012, 0.006, 0.012],
+      highlightTint: [0.03, 0.02, -0.015],
+      vignette: 0.28,
+      bleach: 0.05,
+      grain: 0.02,
+      dust: [0.4, 0.44, 0.42],
+      lift: 0.02,
     },
   },
 }

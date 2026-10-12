@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { DEFAULT_MAP, MAP_IDS, MAPS } from '../shared/maps.js'
+import { MAP_IDS, MAPS } from '../shared/maps.js'
 import { useGameStore } from '../store/gameStore.js'
 import { drawMapPlan } from './mapPlan.js'
 import { uiClick, uiHover } from './uiUtils.js'
@@ -18,7 +18,7 @@ function MapTile({ id, on, onPick }) {
           {map.tagline} · {map.size}
         </small>
       </span>
-      {id === DEFAULT_MAP && <span className="dl-tag new">New</span>}
+      {map.isNew && <span className="dl-tag new">New</span>}
     </button>
   )
 }
