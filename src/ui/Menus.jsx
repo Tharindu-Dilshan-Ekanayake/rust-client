@@ -6,6 +6,8 @@ import { MAX_PLAYERS } from '../shared/constants.js'
 import { MAP_NAME } from '../shared/map.js'
 import { useGameStore } from '../store/gameStore.js'
 import { Button } from './common.jsx'
+import { goFullscreen } from './mobile.js'
+import { IS_TOUCH } from '../game/player/input.js'
 import { RankCard } from './Progression.jsx'
 
 const TIPS = [
@@ -153,14 +155,21 @@ export function MainMenu() {
           />
         </div>
         <div className="dl-menu-buttons">
-          <Button className="primary" onClick={() => setMenuScreen('mode')}>
+          <Button
+            className="primary"
+            onClick={() => {
+              // Phones: full screen and sideways from here on (needs this tap).
+              goFullscreen()
+              setMenuScreen('mode')
+            }}
+          >
             Play <small>TDM · FFA · up to {MAX_PLAYERS} players</small>
           </Button>
           <Button onClick={() => setMenuScreen('classes')}>
             Classes <small>Create-a-class</small>
           </Button>
           <Button onClick={() => setMenuScreen('settings')}>
-            Settings <small>Mouse · FOV · audio</small>
+            Settings <small>{IS_TOUCH ? 'Look' : 'Mouse'} · FOV · audio</small>
           </Button>
         </div>
         {connection.status === 'error' && (
@@ -200,6 +209,23 @@ const KEYS = [
   ['B', 'Change class'],
   ['Tab', 'Scoreboard'],
   ['Esc', 'Menu'],
+]
+
+/** The same, for the on-screen controls (ui/TouchControls.jsx). */
+const TOUCH_KEYS = [
+  ['Left thumb', 'Move: the stick appears where you touch'],
+  ['Stick fully up', 'Sprint'],
+  ['Right side drag', 'Look'],
+  ['Fire', 'Fire (drag while holding to aim)'],
+  ['Aim', 'Aim down sights (tap on / off)'],
+  ['Jump', 'Jump'],
+  ['Crouch', 'Crouch (tap) · prone (hold) · slide (while sprinting)'],
+  ['Reload', 'Reload'],
+  ['Swap', 'Primary / secondary'],
+  ['Frag (hold)', 'Cook + throw frag'],
+  ['Tac', 'Tactical (flash / smoke)'],
+  ['Knife', 'Quick knife'],
+  ['Top buttons', 'Menu · scoreboard'],
 ]
 
 export function SettingsPanel({ onBack }) {
@@ -252,7 +278,7 @@ export function SettingsPanel({ onBack }) {
       <div className="dl-cols" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <div className="dl-panel dl-detail">
           <div className="dl-label">Controls</div>
-          {slider('sensitivity', 'Mouse sensitivity', 0.2, 3, 0.05)}
+          {slider('sensitivity', IS_TOUCH ? 'Look sensitivity' : 'Mouse sensitivity', 0.2, 3, 0.05)}
           {slider('adsSensitivity', 'ADS sensitivity', 0.3, 1.5, 0.05)}
           {toggle('invertY', 'Invert Y')}
           <div className="dl-label" style={{ marginTop: 10 }}>
@@ -280,9 +306,9 @@ export function SettingsPanel({ onBack }) {
           {slider('musicVolume', 'Music volume', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`)}
         </div>
         <div className="dl-panel dl-detail">
-          <div className="dl-label">Key bindings</div>
+          <div className="dl-label">{IS_TOUCH ? 'Touch controls' : 'Key bindings'}</div>
           <div className="dl-keys">
-            {KEYS.map(([k, v]) => (
+            {(IS_TOUCH ? TOUCH_KEYS : KEYS).map(([k, v]) => (
               <span key={k} style={{ display: 'contents' }}>
                 <kbd>{k}</kbd>
                 <span>{v}</span>

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 
 import { sfx } from '../audio/sfx.js'
-import { releaseLock, requestLock } from '../game/player/input.js'
+import { IS_TOUCH, isLocked, releaseLock, requestLock } from '../game/player/input.js'
 import { useGameStore } from '../store/gameStore.js'
 import { ClassEditorScreen } from './ClassEditor.jsx'
 import HUD from './HUD.jsx'
@@ -9,6 +9,8 @@ import { Connecting, DeploySelect, TeamSelect } from './Lobby.jsx'
 import { LoadingScreen, MainMenu, SettingsScreen } from './Menus.jsx'
 import { ModeSelect } from './PlayScreen.jsx'
 import { ClassPicker, DeathScreen, MatchEnd, PauseMenu, SettingsOverlay } from './Overlays.jsx'
+import TouchControls from './TouchControls.jsx'
+import { useViewport } from './uiScale.js'
 
 const inMatch = (s) => s.gameState === 'playing' || s.gameState === 'dead'
 
@@ -34,7 +36,7 @@ function useGlobalKeys() {
           releaseLock()
         }
       }
-      if (e.code === 'Escape' && s.overlay && inMatch(s) && !document.pointerLockElement) {
+      if (e.code === 'Escape' && s.overlay && inMatch(s) && !isLocked()) {
         if (s.overlay === 'settings') useGameStore.setState({ overlay: 'pause' })
         else {
           useGameStore.setState({ overlay: null })
@@ -46,7 +48,7 @@ function useGlobalKeys() {
       if (e.code === 'Tab') useGameStore.setState({ scoreboardOpen: false })
     }
     const onLockChange = () => {
-      const locked = Boolean(document.pointerLockElement)
+      const locked = isLocked()
       const s = useGameStore.getState()
       useGameStore.setState({ pointerLocked: locked })
       // Losing the lock mid-match (Esc) opens the menu; the match keeps running.
@@ -65,15 +67,31 @@ function useGlobalKeys() {
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('pointerdown', unlock)
-    document.addEventListener('pointerlockchange', onLockChange)
+    // Pointer lock, or on touch the player tapping in / pausing (input.js).
+    window.addEventListener('dl:lockchange', onLockChange)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('pointerdown', unlock)
       window.removeEventListener('beforeunload', onBeforeUnload)
-      document.removeEventListener('pointerlockchange', onLockChange)
+      window.removeEventListener('dl:lockchange', onLockChange)
     }
   }, [])
+}
+
+/** Phones held upright: the game is played sideways. */
+function RotatePrompt() {
+  return (
+    <div className="dl-rotate">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="20" y="8" width="24" height="44" rx="4" />
+        <path d="M10 40a24 24 0 0 0 20 16M54 24A24 24 0 0 0 34 8" />
+        <path d="M30 56l-4-3 3-4M34 8l4 3-3 4" />
+      </svg>
+      <div className="dl-h">Turn your phone sideways</div>
+      <div className="dl-muted">Modern Guns is played in landscape.</div>
+    </div>
+  )
 }
 
 export function UIRoot() {
@@ -82,6 +100,8 @@ export function UIRoot() {
   const lobbyStep = useGameStore((s) => s.lobbyStep)
   const overlay = useGameStore((s) => s.overlay)
   const editorFromLoading = useGameStore((s) => s.editorFromLoading)
+  const locked = useGameStore((s) => s.pointerLocked)
+  const { scale, portrait } = useViewport()
   const volume = useGameStore((s) => s.settings.volume)
   const musicVolume = useGameStore((s) => s.settings.musicVolume)
   useGlobalKeys()
@@ -98,8 +118,13 @@ export function UIRoot() {
     sfx.setMusicMode(gameState === 'playing' || gameState === 'dead' ? 'match' : 'menu')
   }, [gameState])
 
+  // Smaller screens get the same layout scaled down (ui/uiScale.js): laid out
+  // at 1/scale the size, then shrunk to fit.
+  const fit = scale < 1 ? { width: `${100 / scale}%`, height: `${100 / scale}%`, transform: `scale(${scale})` } : undefined
+  const touchPlay = IS_TOUCH && gameState === 'playing' && locked && !overlay
   return (
-    <div className="dl-root">
+    <>
+    <div className={`dl-root ${IS_TOUCH ? 'dl-touch' : ''}`} style={fit}>
       {gameState === 'loading' && <LoadingScreen />}
       {gameState === 'loading' && editorFromLoading && <ClassEditorScreen />}
 
@@ -120,6 +145,9 @@ export function UIRoot() {
       {overlay === 'classPicker' && <ClassPicker />}
       {overlay === 'settings' && <SettingsOverlay />}
     </div>
+    {touchPlay && <TouchControls scale={scale} />}
+    {IS_TOUCH && portrait && <RotatePrompt />}
+    </>
   )
 }
 

@@ -193,6 +193,11 @@ export function LocalPlayer() {
     if (canAct) {
       iz = (isDown('forward') ? 1 : 0) - (isDown('back') ? 1 : 0)
       ix = (isDown('right') ? 1 : 0) - (isDown('left') ? 1 : 0)
+      // The touch stick, analog: a light push walks slowly.
+      if (input.move.x || input.move.z) {
+        ix = input.move.x
+        iz = input.move.z
+      }
     }
     _fwd.set(-Math.sin(l.yaw), 0, -Math.cos(l.yaw))
     const v = s.vel
@@ -291,7 +296,8 @@ export function LocalPlayer() {
 
     _right.set(Math.cos(l.yaw), 0, -Math.sin(l.yaw))
     _wish.set(0, 0, 0).addScaledVector(_fwd, iz).addScaledVector(_right, ix)
-    if (_wish.lengthSq() > 0) _wish.normalize().multiplyScalar(speed)
+    // Keys give full speed in any direction; the touch stick scales it by how far it's pushed.
+    if (_wish.lengthSq() > 0) _wish.normalize().multiplyScalar(speed * Math.min(1, Math.hypot(ix, iz)))
 
     if (s.slide) {
       const t = (now - s.slide.start) / PLAYER.slideTime

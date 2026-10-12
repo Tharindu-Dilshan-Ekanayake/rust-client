@@ -32,6 +32,11 @@
   color: var(--text);
   font-family: var(--body);
   user-select: none;
+  /* Smaller screens scale the whole UI down from its top-left (ui/uiScale.js),
+     and lay it out against its own size: container units and queries, not the
+     viewport's. */
+  transform-origin: 0 0;
+  container-type: size;
 }
 .dl-root * {
   box-sizing: border-box;
@@ -261,7 +266,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 6vh 7vw;
+  padding: 6cqh 7cqw;
 }
 .dl-logo {
   font-family: var(--head);
@@ -271,14 +276,14 @@
   letter-spacing: 6px;
 }
 .dl-logo .big {
-  font-size: clamp(56px, 9vw, 120px);
+  font-size: clamp(56px, 9cqw, 120px);
   color: var(--text);
 }
 .dl-logo .big span {
   color: var(--accent);
 }
 .dl-logo .sub {
-  font-size: clamp(14px, 1.6vw, 20px);
+  font-size: clamp(14px, 1.6cqw, 20px);
   letter-spacing: 8px;
   color: var(--muted);
   margin-top: 10px;
@@ -315,7 +320,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 28px;
-  padding: 0 6vw;
+  padding: 0 6cqw;
   height: 100%;
   max-width: 560px;
 }
@@ -376,7 +381,7 @@
 
 .dl-frame {
   position: absolute;
-  inset: 4vh 4vw;
+  inset: 4cqh 4cqw;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1191,8 +1196,8 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 86vmin;
-  height: 86vmin;
+  width: 86cqmin;
+  height: 86cqmin;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   box-shadow: 0 0 0 200vmax #020203;
@@ -1226,20 +1231,20 @@
   top: 50%;
   height: 6px;
   margin-top: -3px;
-  width: 30vmin;
+  width: 30cqmin;
 }
 .dl-scope .thick-v {
   left: 50%;
   width: 6px;
   margin-left: -3px;
-  height: 30vmin;
-  top: 63vmin;
-  top: calc(50% + 13vmin);
+  height: 30cqmin;
+  top: 63cqmin;
+  top: calc(50% + 13cqmin);
 }
 .dl-scope .breath {
   position: absolute;
   left: 50%;
-  bottom: 14vh;
+  bottom: 14cqh;
   transform: translateX(-50%);
   width: 160px;
   height: 4px;
@@ -1282,7 +1287,7 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(880px, 92vw);
+  width: min(880px, 92cqw);
   padding: 20px;
   animation: dl-fade 120ms ease both;
 }
@@ -1334,7 +1339,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  padding-bottom: 12vh;
+  padding-bottom: 12cqh;
   gap: 16px;
   animation: dl-fade 300ms ease both;
 }
@@ -1355,14 +1360,14 @@
   flex-direction: column;
   align-items: center;
   gap: 18px;
-  padding: 5vh 4vw;
+  padding: 5cqh 4cqw;
   height: 100%;
   overflow-y: auto;
 }
 .dl-banner {
   font-family: var(--head);
   font-weight: 700;
-  font-size: clamp(56px, 10vw, 120px);
+  font-size: clamp(56px, 10cqw, 120px);
   letter-spacing: 10px;
   line-height: 1;
   text-transform: uppercase;
@@ -1376,7 +1381,7 @@
 }
 
 .dl-menu-panel {
-  width: min(420px, 92vw);
+  width: min(420px, 92cqw);
   padding: 22px;
   display: flex;
   flex-direction: column;
@@ -1512,7 +1517,7 @@
   font-family: var(--body);
 }
 
-@media (max-width: 900px) {
+@container (max-width: 900px) {
   .dl-cols {
     grid-template-columns: 1fr;
   }
@@ -1661,7 +1666,7 @@
   position: relative;
 }
 .dl-modecard h2 {
-  font-size: clamp(30px, 3vw, 42px);
+  font-size: clamp(30px, 3cqw, 42px);
   line-height: 0.95;
   margin: 0 0 10px;
 }
@@ -1974,7 +1979,7 @@
   place-items: center;
   font-family: var(--head);
   font-weight: 700;
-  font-size: clamp(26px, 2.6vw, 38px);
+  font-size: clamp(26px, 2.6cqw, 38px);
   color: var(--text);
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--line);
@@ -2006,7 +2011,7 @@
   }
 }
 
-@media (max-width: 1000px) {
+@container (max-width: 1000px) {
   .dl-play-body {
     grid-template-columns: 1fr;
     height: auto;
@@ -2017,7 +2022,7 @@
     min-height: 240px;
   }
 }
-@media (max-width: 640px) {
+@container (max-width: 640px) {
   .dl-play-modes {
     grid-template-columns: 1fr;
   }
@@ -2113,7 +2118,7 @@
   left: 50%;
   bottom: 10px;
   transform: translateX(-50%);
-  width: min(560px, 46vw);
+  width: min(560px, 46cqw);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2171,7 +2176,7 @@
 }
 
 .dl-xp-summary {
-  width: min(880px, 92vw);
+  width: min(880px, 92cqw);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -2196,4 +2201,173 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* ---- phones and tablets ------------------------------------------------------- */
+
+/* The HUD moves clear of the on-screen controls: health under the minimap,
+   ammo under the kill feed, no XP strip along the bottom. (These are in the
+   UI's own pixels, before it's scaled down to fit the screen.) */
+.dl-touch .dl-health {
+  bottom: auto;
+  top: 272px;
+  transform: scale(0.8);
+  transform-origin: left top;
+}
+.dl-touch .dl-ammo {
+  bottom: auto;
+  top: 150px;
+  transform: scale(0.8);
+  transform-origin: right top;
+}
+.dl-touch .dl-xpbar {
+  display: none;
+}
+.dl-touch .dl-promotion {
+  bottom: auto;
+  top: 24%;
+}
+
+/* On-screen controls (ui/TouchControls.jsx). --u is 1% of the screen height,
+   capped so a tablet doesn't get dinner-plate buttons. */
+.dl-tc {
+  --u: min(1vh, 5.2px);
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  font-family: var(--head);
+}
+.dl-tc-btn,
+.dl-tc-small {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 0.4);
+  border-radius: 50%;
+  background: rgba(14, 16, 20, 0.34);
+  border: 1.5px solid rgba(232, 230, 225, 0.42);
+  color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(2px);
+  transition:
+    background var(--fast),
+    transform 80ms;
+}
+.dl-tc-btn svg,
+.dl-tc-small svg {
+  width: 46%;
+  height: 46%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dl-tc-btn span {
+  font-size: calc(var(--u) * 2.1);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.dl-tc-btn.fire {
+  background: rgba(229, 72, 77, 0.28);
+  border-color: rgba(255, 170, 160, 0.6);
+}
+.dl-tc-btn.fire svg {
+  width: 42%;
+  height: 42%;
+}
+.dl-tc-btn.on,
+.dl-tc-small.on {
+  background: rgba(242, 163, 58, 0.5);
+  transform: scale(0.94);
+}
+.dl-tc-btn.latched,
+.dl-tc-small.latched {
+  background: rgba(242, 163, 58, 0.42);
+  border-color: var(--accent);
+}
+.dl-tc-top {
+  position: absolute;
+  top: calc(var(--u) * 1.6);
+  display: flex;
+  gap: calc(var(--u) * 1.6);
+}
+.dl-tc-small {
+  position: relative;
+  width: calc(var(--u) * 9.5);
+  height: calc(var(--u) * 9.5);
+  border-radius: 4px;
+}
+.dl-tc-stick,
+.dl-tc-knob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+}
+.dl-tc-stick {
+  width: calc(var(--u) * 24);
+  height: calc(var(--u) * 24);
+  margin: calc(var(--u) * -12) 0 0 calc(var(--u) * -12);
+  border: 2px solid rgba(232, 230, 225, 0.35);
+  background: rgba(14, 16, 20, 0.22);
+}
+.dl-tc-knob {
+  width: calc(var(--u) * 10);
+  height: calc(var(--u) * 10);
+  margin: calc(var(--u) * -5) 0 0 calc(var(--u) * -5);
+  background: rgba(232, 230, 225, 0.55);
+  box-shadow: 0 0 calc(var(--u) * 2) rgba(0, 0, 0, 0.4);
+}
+
+/* Held upright: ask for landscape. */
+.dl-rotate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: #0e1014;
+  color: var(--text);
+  font-family: var(--body);
+}
+.dl-rotate svg {
+  width: 96px;
+  height: 96px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: dl-rotate-hint 2.4s ease-in-out infinite;
+}
+.dl-rotate .dl-h {
+  font-size: 24px;
+}
+@keyframes dl-rotate-hint {
+  0%,
+  25% {
+    transform: rotate(0deg);
+  }
+  55%,
+  85% {
+    transform: rotate(-90deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
 }

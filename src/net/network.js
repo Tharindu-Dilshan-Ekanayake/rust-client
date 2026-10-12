@@ -4,6 +4,7 @@ import { reloadFoley } from '../audio/bank.js'
 import { sfx } from '../audio/sfx.js'
 import { getBloxityState, useBloxityStore } from '../bloxity/store.js'
 import { fx } from '../game/fx/fxApi.js'
+import { releaseLock } from '../game/player/input.js'
 import { lineClear } from '../game/physicsQueries.js'
 import { emit, runtime } from '../game/runtime.js'
 import {
@@ -62,7 +63,7 @@ function displayName({ user, guest }) {
 }
 
 function releasePointer() {
-  if (document.pointerLockElement) document.exitPointerLock()
+  releaseLock()
 }
 
 class Network {

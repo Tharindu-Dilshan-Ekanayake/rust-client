@@ -81,6 +81,30 @@ A private room's key dies with its server, so those players get a message
 instead. Friends who want the same private room should party up on Bloxity so
 the matchmaker seats them on the same server.
 
+## Phones and tablets
+
+The game plays on phones and tablets, held sideways (upright, it asks you to
+turn the phone). Pressing Play goes full screen and locks landscape where the
+browser allows it (inside the Bloxity portal, the portal goes full screen).
+
+- **UI scale** (`ui/uiScale.js`): the UI is laid out for 1280 x 720. A smaller
+  screen gets the same layout scaled down to fit (down to 0.5x on a phone), so
+  the game view keeps most of the screen and nothing overlaps. The UI root is a
+  size container, so its CSS uses `cqw` / `cqh` and `@container` queries
+  rather than the viewport.
+- **Touch controls** (`ui/TouchControls.jsx`), while you play:
+  - Left thumb: a stick appears wherever you touch. Push it all the way up to sprint.
+  - Right side: drag to look. Holding Fire also looks.
+  - Buttons: Fire (plus a second one on the left), Aim (tap on / off), Jump,
+    Crouch (tap) / prone (hold) / slide (while sprinting), Reload, Swap, Frag
+    (hold to cook), Tactical, Knife.
+  - Up top: menu and scoreboard.
+  - The HUD moves out of their way: health under the minimap, ammo under the
+    kill feed, no XP strip.
+- They feed the same input state as the keyboard and mouse (`game/player/input.js`:
+  "Touch:*" binds, `input.move`, touch "lock" in place of pointer lock).
+  `?touch` turns touch mode on for testing on a desktop.
+
 ## Controls
 
 | Key | Action |

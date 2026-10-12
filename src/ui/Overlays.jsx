@@ -138,7 +138,7 @@ export function MatchEnd() {
             </span>
           </div>
         )}
-        <div className="dl-panel" style={{ padding: 18, width: 'min(880px, 92vw)' }}>
+        <div className="dl-panel" style={{ padding: 18, width: 'min(880px, 92cqw)' }}>
           <div className="dl-board" style={{ position: 'static', transform: 'none', width: '100%', padding: 0 }}>
             <ScoreTable highlightMvp />
           </div>

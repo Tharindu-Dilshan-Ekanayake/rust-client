@@ -62,7 +62,9 @@ function SpinningWeapon({ id, att }) {
 
 export function WeaponPreview({ id, att }) {
   return (
-    <Canvas camera={{ position: [0, 0.25, 1.9], fov: 35 }} dpr={[1, 2]} gl={{ antialias: true, alpha: true }}>
+    // offsetSize: the UI may be scaled down with a CSS transform (ui/uiScale.js);
+    // measure the box's own size, not its shrunk on-screen one.
+    <Canvas camera={{ position: [0, 0.25, 1.9], fov: 35 }} dpr={[1, 2]} gl={{ antialias: true, alpha: true }} resize={{ offsetSize: true }}>
       <StudioEnvironment intensity={0.85} />
       <ambientLight intensity={0.25} color="#ffe2c0" />
       <directionalLight position={[2, 3, 2]} intensity={2.2} color="#ffe0b8" />
