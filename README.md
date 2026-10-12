@@ -236,8 +236,16 @@ Built to run smoothly on low-end PCs without hitches:
   sticks). **Auto quality** (on by default) drops a level if the frame rate stays
   under ~40 even at the lowest render scale. *Auto resolution* trims the render
   scale first.
-- **Low**: no sun shadows, no colour grade, fewer dust particles. **Medium**:
-  shadows redrawn every other frame, 2x MSAA on the grade. **High**: everything.
+- **Low**: no sun shadows, fewer dust particles, render scale 0.75–1.
+  **Medium**: shadows redrawn every other frame. **High**: everything, 4096
+  shadow map. Every level gets the colour grade, anti-aliased in the same pass
+  (FXAA, `game/ColorGrade.js`): MSAA on the HDR target cost an integrated GPU
+  (Radeon 780M) more than the rest of the frame (21 ms against 6 ms at 1080p).
+  FXAA finds edges from a one-channel tone curve and only tone-maps the full
+  neighbourhood on edges.
+- Two flash point lights shared by every muzzle flash and blast, and no lamp
+  lights in the maps: every point light costs every lit pixel, flashing or not.
+  Both maps keep the same light count.
 - A full match (7 other players) is ~130–160 draw calls on High, down from ~580:
   - The map is merged per material, with the whole arena as one cell (only the
     outskirts are split up for culling). Materials that differ only in colour
@@ -253,8 +261,19 @@ Built to run smoothly on low-end PCs without hitches:
   - The viewmodel has its own copies of its materials, and skinned and
     instanced shadow casters their own depth materials, so three.js never has
     to look a shader up again mid-frame.
-- The arm IK reads world matrices directly instead of rebuilding every
-  ancestor several times per arm per player.
+- Before each render three.js walks the whole scene to update world matrices,
+  hidden or not. The world scene uses a leaner walk (`game/sceneMatrices.js`)
+  that skips hidden subtrees (spent effect pools, the batched map's originals)
+  and the frozen static map: ~0.38 ms → ~0.05 ms per frame on the dev machine.
+- Players' bodies: the proportioned rest pose is worked out once (not every
+  frame), bones skip three's quaternion → Euler mirroring, the arm IK brings
+  only the arms up to date (not the whole rig), and each player's kit string is
+  parsed once.
+- Shader first use: three reads a shader's uniform tables the first time
+  something is drawn with it. On AMD through ANGLE that stalled 0.1–0.4 s even
+  for shaders compiled seconds earlier (the first shot, first reload, first
+  explosion). `PerfDirector` does it as soon as the driver reports each shader
+  linked (a non-blocking check), so nothing waits mid-fight.
 - Physics steps once per frame (`timeStep="vary"`): nothing on the client is
   simulated, and a fixed step caught up with dozens of steps after a slow frame.
 - Shaders are compiled and textures uploaded ahead of time, including the
@@ -284,9 +303,19 @@ Built to run smoothly on low-end PCs without hitches:
   the two; coplanar faces flicker between them, edges barely move.)
 - Empty particle pools skip their update and draw.
 
-Measured (Playwright, online match with 7 bots, uncapped): High went from ~51 to
-~100 FPS on the dev machine, and from 3 to 10 FPS with Chrome's 4x CPU
-throttle; joining a match went from two ~0.5 s freezes to nothing over ~0.15 s.
+Measured (Playwright, online match with 7 bots, 1080p, uncapped):
+
+| | Radeon 780M (integrated) | RTX 5050 Laptop |
+|---|---|---|
+| Atomic Acres, Low | 75 → 124 FPS | 249 → 251 FPS |
+| Atomic Acres, High | 35 → 95 FPS | 167 → 263 FPS |
+| Dustline, Low | 103 FPS | 264 FPS |
+| Dustline, High | 78 FPS | 221 FPS |
+
+The longest frame in a 12 s fight went from 280–450 ms (shader first use) to
+under 50 ms on the 780M and under 17 ms on the RTX. Earlier: High went from ~51
+to ~100 FPS on the dev machine, and joining a match went from two ~0.5 s
+freezes to nothing over ~0.15 s.
 
 ## Dev tools
 

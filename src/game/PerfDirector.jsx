@@ -10,6 +10,7 @@ import { makeArm } from './player/arms.js'
 import { spriteShowcase } from './remote/sprites.js'
 import { QUALITY_STEPS } from './quality.js'
 import { runtime } from './runtime.js'
+import { leanMatrixWalk } from './sceneMatrices.js'
 
 /**
  * Keeps the game smooth on whatever it runs on:
@@ -20,7 +21,9 @@ import { runtime } from './runtime.js'
  *  - compiles every shader and uploads every texture up front (and again for
  *    anything new that turns up later: a player joining, a weapon pulled out)
  *    so the first shot, first grenade or first enemy on screen doesn't freeze
- *    the game while the GPU driver catches up.
+ *    the game while the GPU driver catches up;
+ *  - finishes setting each of those shaders up as soon as the driver has it
+ *    ready (see finishPrograms).
  */
 
 const TEXTURE_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'alphaMap', 'aoMap', 'bumpMap', 'lightMap']
@@ -129,14 +132,17 @@ export function PerfDirector() {
     prepareWeaponModel(c.primary, c.primaryAtt)
     prepareWeaponModel(c.secondary, c.secondaryAtt)
   }, [classId, classes])
-  const st = useRef({ frame: 0, compiledAt: '', seenWorld: new WeakSet(), seenVm: new WeakSet(), parked: 0, slow: 0, lastFps: 0 })
+  const st = useRef({ frame: 0, compiledAt: '', seenWorld: new WeakSet(), seenVm: new WeakSet(), finished: new WeakSet(), parked: 0, slow: 0, lastFps: 0 })
 
   // The world never moves: don't rebuild the scene root's matrix every frame
-  // (it forces every object below it to recompute its own).
+  // (it forces every object below it to recompute its own), and before each
+  // render walk only what can have moved (see sceneMatrices.js).
   useEffect(() => {
     scene.matrixAutoUpdate = false
     scene.updateMatrix()
+    const undo = leanMatrixWalk(scene)
     return () => {
+      undo()
       scene.matrixAutoUpdate = true
     }
   }, [scene])
@@ -152,6 +158,8 @@ export function PerfDirector() {
     const every = quality === 'high' ? 1 : 2
     gl.shadowMap.autoUpdate = every === 1
     if (every > 1 && s.frame % every === 0) gl.shadowMap.needsUpdate = true
+
+    if (s.frame % 10 === 5) finishPrograms(gl, s.finished)
 
     // Warm-up. Everything at once whenever what every shader depends on
     // changes (the reflection maps arriving, shadows on/off); in between, only
@@ -198,6 +206,22 @@ export function PerfDirector() {
     }
   })
   return null
+}
+
+/**
+ * three.js reads a shader's uniform and attribute tables (and its compile log)
+ * the first time something is drawn with it, not when it's compiled. On some
+ * drivers (AMD through ANGLE/D3D11) that first read stalled for 0.1-0.4 s
+ * even when the shader had been compiled seconds earlier: the first shot, the
+ * first reload, the first explosion. Done here instead, for every shader the
+ * driver reports linked (asking is non-blocking), it costs well under 1 ms.
+ */
+function finishPrograms(gl, finished) {
+  for (const program of gl.info.programs ?? []) {
+    if (finished.has(program) || !program.isReady?.()) continue
+    finished.add(program)
+    program.getUniforms()
+  }
 }
 
 /** Uploads the textures a set of materials draws with. */

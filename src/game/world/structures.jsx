@@ -689,7 +689,6 @@ export function Shack(s) {
         <boxGeometry args={[0.6, 0.06, 0.2]} />
         <meshStandardMaterial color="#fff3d6" emissive="#ffd9a0" emissiveIntensity={2} />
       </mesh>
-      <pointLight position={[cx, s.height - 0.35, cz]} color="#ffcf8a" intensity={6} distance={7} decay={1.6} />
     </group>
   )
 }

@@ -103,15 +103,14 @@ const RENDERERS = {
  * Atomic Acres: every entity of the shared map drawn by its renderer (the pool
  * is part of the ground), merged by the static batcher, plus the physics.
  *
- * One warm lamp lights the yellow house's living room. Dustline has one point
- * light too (in the shack): with the same number of lights on both maps,
- * switching maps reuses every compiled shader instead of rebuilding them all.
+ * Neither map has point lights of its own (only the effects' muzzle-flash
+ * lights): every point light costs every lit pixel, and with the same lights
+ * on both maps, switching maps reuses every compiled shader.
  */
 export const AcresMap = memo(function AcresMap({ physics = true }) {
   return (
     <group>
       {physics && <MapColliders colliders={buildAcresColliders} />}
-      <pointLight position={[-21.8, 2.7, 1.2]} color="#ffd9a0" intensity={5} distance={8} decay={1.6} />
       <mesh position={[-21.8, 3.0, 1.2]} material={acres.lampGlass()}>
         <sphereGeometry args={[0.18, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2]} />
       </mesh>

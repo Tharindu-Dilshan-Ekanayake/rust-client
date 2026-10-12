@@ -146,7 +146,9 @@ export function GameCanvas() {
       // Near plane at 10 cm (the player capsule keeps the eye 35 cm off any wall):
       // twice the depth precision of 5 cm, so distant layers don't flicker.
       camera={{ fov: 75, near: 0.1, far: 600, position: [30, 14, 30] }}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
+      // No MSAA on the canvas: the frame is drawn into the colour grade's HDR
+      // target and anti-aliased there (FXAA, see ColorGrade.js). No stencil either.
+      gl={{ antialias: false, stencil: false, powerPreference: 'high-performance' }}
       onCreated={({ gl, scene }) => {
         gl.domElement.setAttribute('data-game', '')
         // Tests read draw-call counts from it (?debug).
