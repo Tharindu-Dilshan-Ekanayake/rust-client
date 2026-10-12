@@ -124,7 +124,13 @@ Esc menu). If the host leaves, the longest-standing player takes over.
 No audio files. `audio/bank.js` renders every sound sample-by-sample when audio
 starts (layered gunshots — crack, muzzle blast, boom, action, early reflections —
 per-gun reload foley, knife, footsteps on sand/metal, explosions, distant
-artillery), with a few variations each. Everything shares a generated outdoor
+artillery), with a few variations each. The guns are mixed Call of Duty style:
+your own shot is wide stereo with a sub kick and the bolt's clack-clack, and a
+ring-out plays when you let go of the trigger; other players' guns crossfade
+from their close shot to a distant pop-and-roll between 20 and 38 m; rounds
+passing within ~3 m of your head crack past you; hits, headshots ("dink"),
+kills and headshot kills have their own dry markers; aiming in rattles your
+gear, and the last quarter of a mag pings hollow under each shot. Everything shares a generated outdoor
 reverb, and distant sounds arrive late (speed of sound) and muffled.
 `audio/music.js` renders a 48 s war score loop offline; it plays full in the
 menus and tucked low under a match, where distant battle ambience takes over.

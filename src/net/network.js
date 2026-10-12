@@ -301,7 +301,7 @@ class Network {
     })
     on('hit', (m) => {
       useGameStore.setState({ hitmarker: { t: performance.now(), kill: m.kill, hs: m.hs } })
-      sfx.play(m.kill ? 'killConfirm' : m.hs ? 'headshot' : 'hitmarker')
+      sfx.play(m.kill ? (m.hs ? 'killHead' : 'killConfirm') : m.hs ? 'headshot' : 'hitmarker')
     })
     on('damaged', (m) => this.onDamaged(m))
     on('fell', (m) => {
@@ -537,7 +537,35 @@ class Network {
     emit('death')
   }
 
+  /**
+   * Someone else's round passing close: the supersonic crack and the air
+   * tearing past, placed where it went by (CoD's near-miss "snap").
+   */
+  nearMiss(m) {
+    const cam = runtime.camera
+    if (!cam || !runtime.local.alive || m.id === this.sessionId || m.w === 'rpg' || !Array.isArray(m.o)) return
+    const ends = Array.isArray(m.es) && m.es.length ? m.es : [m.e]
+    const [lx, ly, lz] = [cam.position.x, cam.position.y, cam.position.z]
+    let best = null
+    for (const e of ends) {
+      if (!Array.isArray(e)) continue
+      const dx = e[0] - m.o[0], dy = e[1] - m.o[1], dz = e[2] - m.o[2]
+      const len2 = dx * dx + dy * dy + dz * dz
+      if (len2 < 1) continue
+      const t = Math.min(1, Math.max(0, ((lx - m.o[0]) * dx + (ly - m.o[1]) * dy + (lz - m.o[2]) * dz) / len2))
+      // Past us (not stopping at our feet) and well clear of the shooter.
+      if (t > 0.97 || t * Math.sqrt(len2) < 4) continue
+      const p = [m.o[0] + dx * t, m.o[1] + dy * t, m.o[2] + dz * t]
+      const d = Math.hypot(p[0] - lx, p[1] - ly, p[2] - lz)
+      if (d < 3.2 && (!best || d < best.d)) best = { d, p }
+    }
+    if (!best) return
+    const pistol = m.w === 'pistol' || m.w === 'hornet' || m.w === 'smg' || m.w === 'viper'
+    sfx.play('bulletCrack', { pos: best.p, volume: (pistol ? 0.55 : 0.9) * Math.min(1, 1.25 - best.d / 4), ref: 1.5, maxDistance: 12 })
+  }
+
   onShot(m) {
+    this.nearMiss(m)
     const r = runtime.remotes.get(m.id)
     const now = performance.now()
     if (r) {
