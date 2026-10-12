@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react'
 
 import { sfx } from '../audio/sfx.js'
 
-import { requestLock } from '../game/player/input.js'
+import { IS_TOUCH, requestLock } from '../game/player/input.js'
 import { runtime } from '../game/runtime.js'
 import { TEAM_LABELS, TEAMS } from '../shared/constants.js'
 import { buildColliders, MAP_HALF } from '../shared/map.js'
@@ -12,6 +12,8 @@ import { useGameStore } from '../store/gameStore.js'
 import { Button, Icon } from './common.jsx'
 import { PromotionBanner, XpBar, XpFeed } from './Progression.jsx'
 import { RankInsignia } from './RankInsignia.jsx'
+import { goFullscreen } from './mobile.js'
+import { uiScale } from './uiScale.js'
 import { fmtTime, useAnimationFrame } from './uiUtils.js'
 
 const teamColor = (team, mode, isMe) =>
@@ -180,7 +182,8 @@ function Crosshair() {
     const hidden = l.ads > 0.6 || l.sprinting || l.climbing || l.weapon === 'knife' || runtime.view.scoped
     el.style.opacity = hidden ? '0' : '1'
     if (hidden) return
-    const px = (Math.tan(runtime.view.spread) / Math.tan((cam.fov * Math.PI) / 360)) * (window.innerHeight / 2)
+    // In the UI's own (possibly scaled-down) pixels: see ui/uiScale.js.
+    const px = (Math.tan(runtime.view.spread) / Math.tan((cam.fov * Math.PI) / 360)) * (window.innerHeight / 2 / uiScale())
     const gap = Math.max(4, Math.min(80, px))
     const [t, b, lft, r] = el.children
     t.style.transform = `translate(-1px, ${-gap - 9}px)`
@@ -649,8 +652,14 @@ function ResumePrompt() {
   if (locked || overlay || gameState !== 'playing') return null
   return (
     <div className="dl-resume">
-      <Button className="primary" onClick={() => requestLock()}>
-        Click to play
+      <Button
+        className="primary"
+        onClick={() => {
+          goFullscreen()
+          requestLock()
+        }}
+      >
+        {IS_TOUCH ? 'Tap to play' : 'Click to play'}
       </Button>
     </div>
   )

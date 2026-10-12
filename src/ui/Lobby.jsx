@@ -7,6 +7,7 @@ import { MATCH_RULES, MODE_LABELS, TEAM_LABELS, TEAMS } from '../shared/constant
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { toWireClass, useGameStore } from '../store/gameStore.js'
 import { Button, Icon, RoomKey, WarmupBar } from './common.jsx'
+import { goFullscreen } from './mobile.js'
 import { useAnimationFrame } from './uiUtils.js'
 
 function useSecondsLeft(deadline) {
@@ -192,7 +193,10 @@ export function DeploySelect() {
     const cls = s.getClass(s.selectedClassId)
     net.send('spawn_request', { classData: toWireClass(cls) })
     sfx.play('uiDeploy')
-    if (gesture) requestLock()
+    if (gesture) {
+      goFullscreen()
+      requestLock()
+    }
   }
 
   useEffect(() => {
