@@ -1624,8 +1624,8 @@
 .dl-play-modes {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
   min-height: 300px;
 }
 
@@ -1705,6 +1705,43 @@
   color: #1a1206;
   background: var(--accent);
 }
+/* Quick play: the maps side by side in one row, so the mode cards and the
+   class strip below them keep their room on a 720 px screen. */
+.dl-mappick:not(.compact) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.dl-mappick:not(.compact) .dl-maptile {
+  padding: 8px 10px;
+  gap: 10px;
+}
+.dl-mappick:not(.compact) .dl-maptile img {
+  width: 50px;
+  height: 50px;
+}
+.dl-mappick:not(.compact) .dl-maptile strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 15px;
+  letter-spacing: 1px;
+  line-height: 1.1;
+  white-space: normal;
+}
+.dl-mappick:not(.compact) .dl-maptile small {
+  font-size: 11px;
+}
+.dl-mappick:not(.compact) .dl-maptile .dl-tag.new {
+  top: 5px;
+  right: 5px;
+  padding: 1px 4px;
+  font-size: 9px;
+}
+@container (max-width: 640px) {
+  .dl-mappick:not(.compact) {
+    grid-template-columns: 1fr;
+  }
+}
 /* Stacked and smaller on the main menu's map card. */
 .dl-mappick.compact {
   grid-template-columns: 1fr;
@@ -1748,7 +1785,8 @@
   cursor: pointer;
   color: var(--text);
   text-align: left;
-  padding: 24px 24px 0;
+  min-width: 0;
+  padding: 20px 20px 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1776,6 +1814,14 @@
   --stripe-b: #b5651d;
   background:
     radial-gradient(ellipse at 85% 20%, rgba(242, 163, 58, 0.18), transparent 60%),
+    var(--panel);
+}
+.dl-modecard.snd {
+  --stripe-a: var(--accent);
+  --stripe-b: var(--bad);
+  background:
+    radial-gradient(ellipse at 80% 18%, rgba(229, 72, 77, 0.16), transparent 58%),
+    radial-gradient(ellipse at 100% 70%, rgba(242, 163, 58, 0.12), transparent 55%),
     var(--panel);
 }
 .dl-modecard.tdm .emblem {
@@ -1810,7 +1856,7 @@
   position: relative;
 }
 .dl-modecard h2 {
-  font-size: clamp(30px, 3cqw, 42px);
+  font-size: clamp(26px, 2.4cqw, 36px);
   line-height: 0.95;
   margin: 0 0 10px;
 }
@@ -1824,8 +1870,8 @@
 }
 .dl-modecard .cta {
   position: relative;
-  margin: 0 -24px;
-  padding: 14px 24px;
+  margin: 0 -20px;
+  padding: 13px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2014,6 +2060,22 @@
   font-size: 15px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
+}
+/* Three modes: narrower tiles, names allowed to wrap. */
+.dl-optiles.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dl-optiles.three button {
+  padding: 10px 10px;
+}
+.dl-optiles.three button strong {
+  font-size: 13px;
+  letter-spacing: 1px;
+  line-height: 1.15;
+}
+.dl-optiles.three button small {
+  font-size: 10.5px;
+  line-height: 1.3;
 }
 .dl-optiles button small {
   font-size: 11px;
@@ -2560,5 +2622,600 @@
   }
   100% {
     transform: rotate(0deg);
+  }
+}
+
+/* ---- Search & Destroy (ui/SndHud.jsx) ------------------------------------------- */
+
+.dl-bomb-glyph {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+.dl-bomb-glyph path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.dl-bomb-glyph path.solid {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* Top bar: rounds won either side of the clock, a pip per player still standing. */
+.dl-snd-top .team {
+  width: 138px;
+}
+.dl-snd-top .clock {
+  width: 150px;
+}
+.dl-snd-top .team .name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dl-snd-top .side {
+  padding: 1px 4px 0;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  line-height: 1.3;
+  border-radius: 2px;
+  color: #0e1014;
+  background: var(--team);
+}
+.dl-snd-top .side.def {
+  color: var(--team);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--team);
+}
+.dl-snd-top .pips {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 5px;
+  margin-top: 6px;
+}
+.dl-snd-top .pips i {
+  flex: 0 1 15px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.14);
+  transform: skewX(-20deg);
+  transition: background 200ms;
+}
+.dl-snd-top .pips i.on {
+  background: var(--team);
+  box-shadow: 0 0 6px var(--team);
+}
+.dl-snd-top .clock .timer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.dl-snd-top .clock.bomb::before {
+  background: var(--bad);
+}
+.dl-snd-top .clock.bomb .timer {
+  color: var(--bad);
+  text-shadow: 0 0 12px rgba(229, 72, 77, 0.6);
+}
+.dl-snd-top .clock.bomb .dl-bomb-glyph {
+  animation: dl-bomb-blink 1s steps(1) infinite;
+}
+.dl-snd-top .clock.bomb .sub {
+  color: #f3a6a8;
+}
+@keyframes dl-bomb-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+/* Under the bar: you're carrying the bomb, or it's lying somewhere. */
+.dl-snd-status {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px 3px 10px;
+  white-space: nowrap;
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #ffd98a;
+  background: rgba(14, 16, 20, 0.8);
+  border: 1px solid rgba(242, 163, 58, 0.55);
+  transform: translateX(-50%);
+  animation: dl-drop-in 220ms ease both;
+}
+.dl-snd-status.warn {
+  color: #ffb3b5;
+  border-color: rgba(229, 72, 77, 0.6);
+}
+.dl-snd-status.warn .dl-bomb-glyph {
+  animation: dl-bomb-blink 0.8s steps(1) infinite;
+}
+@keyframes dl-drop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+}
+
+/* World markers: a diamond with the site letter (or the bomb), what to do there, how far. */
+.dl-objs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dl-obj {
+  --mk: var(--accent);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  font-family: var(--head);
+  font-weight: 700;
+  text-transform: uppercase;
+  will-change: transform;
+}
+.dl-obj.def {
+  --mk: #8fd3ff;
+}
+.dl-obj.danger {
+  --mk: var(--bad);
+}
+.dl-obj > * {
+  position: absolute;
+  left: 0;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.dl-obj .badge {
+  top: -18px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  font-size: 19px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.dl-obj .badge::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  z-index: -1;
+  transform: rotate(45deg);
+  background: color-mix(in srgb, var(--mk) 28%, rgba(10, 12, 16, 0.72));
+  border: 2px solid var(--mk);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mk) 55%, transparent);
+}
+.dl-obj.danger .badge::before {
+  animation: dl-obj-pulse 0.9s ease-in-out infinite;
+}
+@keyframes dl-obj-pulse {
+  50% {
+    box-shadow: 0 0 22px var(--mk);
+    background: color-mix(in srgb, var(--mk) 55%, rgba(10, 12, 16, 0.6));
+  }
+}
+.dl-obj .lbl {
+  top: 21px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--mk);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.dl-obj .dist {
+  top: 35px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+.dl-obj.edge .lbl {
+  display: none;
+}
+.dl-obj.edge .dist {
+  top: 21px;
+}
+.dl-obj.small .badge {
+  top: -12px;
+  width: 24px;
+  height: 24px;
+}
+.dl-obj.small .badge::before {
+  inset: 4px;
+  border-width: 1.5px;
+}
+
+/* Hold to plant / defuse, under the crosshair. */
+.dl-use {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 64px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  transform: translateX(-50%);
+  animation: dl-fade 160ms ease both;
+}
+.dl-use .line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dl-use .key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  background: rgba(14, 16, 20, 0.65);
+  font-family: var(--head);
+  font-size: 15px;
+  color: var(--accent);
+  text-shadow: none;
+}
+.dl-use .doing {
+  display: none;
+  color: var(--accent);
+}
+.dl-use.defuse .doing {
+  color: #8fd3ff;
+}
+.dl-use.busy .idle {
+  display: none;
+}
+.dl-use.busy .doing {
+  display: flex;
+}
+.dl-use .track {
+  width: 230px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.dl-use .track > div {
+  height: 100%;
+  background: linear-gradient(90deg, #f2a33a, #ffd98a);
+  box-shadow: 0 0 10px rgba(242, 163, 58, 0.7);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+.dl-use.defuse .track > div {
+  background: linear-gradient(90deg, #3fa9f5, #a8e0ff);
+  box-shadow: 0 0 10px rgba(63, 169, 245, 0.7);
+}
+
+/* Round banners, just under the top bar: notices drop below them in this mode. */
+.dl-hud.snd .dl-notices {
+  top: 33%;
+}
+.dl-round {
+  --team: var(--accent);
+  position: absolute;
+  left: 50%;
+  top: 128px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 380px;
+  max-width: 600px;
+  padding: 10px 40px 11px;
+  font-family: var(--head);
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: linear-gradient(90deg, transparent, rgba(12, 14, 18, 0.88) 16%, rgba(12, 14, 18, 0.88) 84%, transparent);
+  transform: translateX(-50%);
+  animation: dl-round-in 380ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+.dl-round::before,
+.dl-round::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--team) 30%, var(--team) 70%, transparent);
+  opacity: 0.8;
+}
+.dl-round::before {
+  top: 0;
+}
+.dl-round::after {
+  bottom: 0;
+}
+@keyframes dl-round-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(0.6);
+  }
+}
+.dl-round .text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.dl-round .eyebrow {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--accent);
+}
+.dl-round .eyebrow em {
+  font-style: normal;
+  color: var(--bad);
+}
+.dl-round .big {
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: 4px;
+  color: var(--team);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--team) 50%, transparent);
+}
+.dl-round .sub {
+  margin-top: 2px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: #c9c6be;
+}
+.dl-round .count {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  flex: none;
+  font-size: 36px;
+  color: #fff;
+  border: 2px solid var(--team);
+  background: color-mix(in srgb, var(--team) 18%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--team) 40%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.dl-round .count.tick {
+  animation: dl-count-pop 420ms ease-out;
+}
+@keyframes dl-count-pop {
+  from {
+    transform: scale(1.35);
+    color: var(--accent);
+  }
+}
+.dl-round.go {
+  flex-direction: column;
+  gap: 2px;
+  min-width: 300px;
+  align-items: center;
+}
+.dl-round.go .big {
+  font-size: 52px;
+  letter-spacing: 12px;
+  color: var(--accent);
+  text-shadow: 0 0 24px rgba(242, 163, 58, 0.6);
+}
+.dl-round.end.won {
+  --team: var(--good);
+}
+.dl-round.end.lost {
+  --team: var(--bad);
+}
+.dl-round .tally {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  padding-left: 18px;
+  border-left: 1px solid var(--line);
+  font-size: 34px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dl-round .tally i {
+  width: 12px;
+  height: 2px;
+  background: var(--muted);
+}
+
+/* Out of the round: compact, so the teammate you're watching stays in view. */
+.dl-death.snd {
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.55), transparent 38%);
+  padding-bottom: 5cqh;
+  gap: 10px;
+}
+.dl-snd-killer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 92cqw;
+  padding: 7px 16px 6px;
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: rgba(14, 16, 20, 0.8);
+  border-left: 2px solid var(--bad);
+}
+.dl-snd-killer b {
+  font-size: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dl-snd-killer .weapon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dl-snd-killer .hp {
+  color: var(--text);
+  font-size: 15px;
+}
+.dl-snd-killer .hs {
+  color: var(--accent);
+}
+.dl-spec {
+  display: flex;
+  align-items: stretch;
+  background: rgba(14, 16, 20, 0.84);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.dl-spec button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    background var(--fast),
+    color var(--fast);
+}
+.dl-spec button:not(:disabled):hover,
+.dl-spec button:not(:disabled):active {
+  background: var(--accent);
+  color: #1a1206;
+}
+.dl-spec button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.dl-spec button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dl-spec .who {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 260px;
+  padding: 8px 14px 9px;
+}
+.dl-spec .who b {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--head);
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.dl-spec-note {
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #a9a69f;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.dl-spec-class {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+/* Fingers need bigger arrows. */
+.dl-touch .dl-spec button {
+  width: 92px;
+}
+.dl-touch .dl-spec .who {
+  min-height: 74px;
+  justify-content: center;
+}
+.dl-touch .dl-spec button svg {
+  width: 34px;
+  height: 34px;
+}
+.dl-touch .dl-hud.snd .dl-promotion {
+  top: auto;
+  bottom: 26%;
+}
+
+/* Touch: the plant / defuse button, only there while you can use it. */
+.dl-tc-btn.use {
+  border: calc(var(--u) * 0.5) solid rgba(242, 178, 74, 0.9);
+  color: #ffd98a;
+  background: radial-gradient(circle at 50% 40%, rgba(70, 52, 20, 0.45), rgba(10, 10, 12, 0.6) 70%);
+  box-shadow: 0 0 calc(var(--u) * 2) rgba(242, 163, 58, 0.5);
+  opacity: max(0.92, var(--tc-alpha, 0.7));
+  animation: dl-use-pop 240ms ease both;
+}
+.dl-tc-btn.use.defuse {
+  border-color: rgba(120, 200, 255, 0.9);
+  color: #bfe6ff;
+  background: radial-gradient(circle at 50% 40%, rgba(20, 50, 70, 0.45), rgba(10, 10, 12, 0.6) 70%);
+  box-shadow: 0 0 calc(var(--u) * 2) rgba(63, 169, 245, 0.55);
+}
+.dl-tc-btn.use > .glyph {
+  width: 42%;
+  height: 42%;
+  transform: translateY(-14%);
+}
+.dl-tc-btn.use .dl-use-ring {
+  position: absolute;
+  left: calc(var(--u) * -1.3);
+  top: calc(var(--u) * -1.3);
+  width: calc(100% + var(--u) * 2.6);
+  height: calc(100% + var(--u) * 2.6);
+  transform: rotate(-90deg);
+  filter: none;
+}
+.dl-tc-btn.use .dl-use-ring circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+}
+.dl-tc-btn.use .lbl {
+  position: absolute;
+  bottom: 17%;
+  font-size: calc(var(--u) * 2.2);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+@keyframes dl-use-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
   }
 }

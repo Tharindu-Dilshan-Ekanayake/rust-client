@@ -61,6 +61,32 @@ export const runtime = {
 
   /** Where the death camera looks from / at. */
   death: { at: new Vector3(), killerId: '' },
+
+  /**
+   * Search & Destroy, straight from the room state on every patch (the HUD's
+   * timers and progress bars read it each frame): round phase, the bomb, and
+   * who is planting or defusing.
+   */
+  snd: {
+    phase: '',
+    attackers: '',
+    bombState: '',
+    carrier: '',
+    site: '',
+    x: 0,
+    y: 0,
+    z: 0,
+    left: 0,
+    action: '',
+    by: '',
+    progress: 0,
+    /** performance.now() the freeze ends (from the round event). */
+    freezeEnds: 0,
+    /** Someone has picked the bomb up this round (until then it lies at the attackers' spawn). */
+    taken: false,
+  },
+  /** Teammate the dead are watching (Search & Destroy). */
+  spectateId: '',
 }
 
 /* Minimal event bus between the network layer and scene components. */

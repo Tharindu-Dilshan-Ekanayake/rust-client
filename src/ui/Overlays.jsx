@@ -2,13 +2,14 @@ import { useState } from 'react'
 
 import { requestLock } from '../game/player/input.js'
 import { net, weaponName } from '../net/network.js'
-import { TEAM_LABELS, TEAMS } from '../shared/constants.js'
+import { isTeamMode, TEAM_LABELS, TEAMS } from '../shared/constants.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { toWireClass, useGameStore } from '../store/gameStore.js'
 import { Button, Icon, RoomKey, WarmupBar } from './common.jsx'
 import { MatchXpSummary } from './Progression.jsx'
 import { useAnimationFrame } from './uiUtils.js'
 import { ScoreTable } from './HUD.jsx'
+import { SndDeathScreen } from './SndHud.jsx'
 import { SettingsPanel } from './Menus.jsx'
 
 const closeOverlayAndResume = () => {
@@ -34,9 +35,10 @@ export function DeathScreen() {
     if (v !== left) setLeft(v)
   })
   if (!death) return null
+  if (mode === 'snd') return <SndDeathScreen />
   const killerColor =
-    mode === 'tdm' ? (death.killerTeam === TEAMS.ALPHA ? 'var(--alpha)' : 'var(--bravo)') : 'var(--bad)'
-  const iconName = WEAPONS[death.weapon] || EQUIPMENT[death.weapon] ? death.weapon : death.weapon === 'fall' ? 'fall' : 'skull'
+    isTeamMode(mode) ? (death.killerTeam === TEAMS.ALPHA ? 'var(--alpha)' : 'var(--bravo)') : 'var(--bad)'
+  const iconName = WEAPONS[death.weapon] || EQUIPMENT[death.weapon] || death.weapon === 'bomb' ? death.weapon : death.weapon === 'fall' ? 'fall' : 'skull'
 
   return (
     <div className="dl-death">
@@ -93,7 +95,7 @@ export function MatchEnd() {
 
   let title
   let color = 'var(--text)'
-  if (mode === 'tdm') {
+  if (isTeamMode(mode)) {
     if (matchEnd.winner === 'draw') title = 'Draw'
     else if (matchEnd.winner === team) {
       title = 'Victory'
@@ -119,8 +121,8 @@ export function MatchEnd() {
           {title}
         </div>
         <div className="dl-label">
-          {mode === 'tdm'
-            ? `ALPHA ${room.scoreAlpha} — ${room.scoreBravo} BRAVO`
+          {isTeamMode(mode)
+            ? `ALPHA ${room.scoreAlpha} — ${room.scoreBravo} BRAVO${mode === 'snd' ? ' · ROUNDS' : ''}`
             : winnerName
               ? `${winnerName} wins`
               : ''}

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { releaseLock, touchAiming, touchLook, touchMouse, touchMove, touchPress, touchRelease, touchSwap } from '../game/player/input.js'
+import { runtime } from '../game/runtime.js'
 import { useGameStore } from '../store/gameStore.js'
+import { useAnimationFrame } from './uiUtils.js'
 
 /**
  * On-screen controls for phones and tablets, laid over the game while you play.
@@ -14,6 +16,8 @@ import { useGameStore } from '../store/gameStore.js'
  *    so you can shoot and track at once.
  *  - A cluster round the fire button (aim, jump, crouch, reload, swap, grenades,
  *    knife), a second fire button on the left, and pause / scores up top.
+ *  - Search & Destroy: a hold-to-plant / defuse button left of the cluster,
+ *    only while you're somewhere you can use it.
  *
  * Sizes are in `--u` (1% of the screen height, capped for tablets) and placed
  * clear of the HUD, which the touch layout moves out of their way (ui.css,
@@ -46,6 +50,8 @@ const RIGHT = [
 const LEFT_FIRE = { id: 'fireL', cx: 10, cy: 40, r: 6, label: 'Fire', icon: 'bullet' }
 /** Where the stick rests when no thumb is on it: from the bottom-left corner, in --u. */
 const STICK_REST = { cx: 22, cy: 21 }
+/** Search & Destroy's plant / defuse button: from the bottom-right corner, clear of the cluster. */
+const USE_BTN = { cx: 64, cy: 15, r: 8.5 }
 
 /**
  * Icons on a 24 x 24 grid, as parts: `f` filled silhouettes (the cartridge,
@@ -87,6 +93,14 @@ const ICONS = {
     { f: 1, d: 'M6 18.2L17 6.6c1.6-1.7 3.4-3.1 5.2-4.4-.9 2.4-2.2 4.6-3.8 6.4L7.8 20z' },
     { d: 'M5.2 15.6l3.4 3.4M2.2 21.8l3.4-3.4' },
   ],
+  bomb: [
+    { f: 1, d: 'M3 9.5h18v10.5H3zM6 12.5v4.5h8v-4.5zM16.4 13.6v2h2v-2z' },
+    { d: 'M9 9.5V7.2C9 5.4 10.4 4 12.2 4H15M18 9.5V7.5' },
+  ],
+  defuse: [
+    { d: 'M9.4 2.6L12 9.4l2.6-6.8M12 10.6L7.6 21.4M12 10.6l4.4 10.8' },
+    { f: 1, d: 'M12 12.2a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z' },
+  ],
   pause: [{ d: 'M8.5 5v14M15.5 5v14' }],
   scores: [{ d: 'M4 6h16M4 12h16M4 18h16' }],
 }
@@ -96,9 +110,9 @@ export function TouchIcon({ name }) {
   return <Icon name={name} />
 }
 
-function Icon({ name }) {
+function Icon({ name, className }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
       {ICONS[name].map((p, i) => (
         <path key={i} d={p.d} className={p.f ? 'solid' : undefined} />
       ))}
@@ -114,6 +128,64 @@ function StickBase() {
       <circle cx="50" cy="50" r="38" className="inner" />
       <path d="M43 17l7-7 7 7M43 83l7 7 7-7M17 43l-7 7 7 7M83 43l7 7-7 7" className="arrows" />
     </svg>
+  )
+}
+
+/**
+ * Hold to plant or defuse (Search & Destroy): there only while holding Use
+ * would do something, with a ring that fills as the server counts it down.
+ */
+function UseButton() {
+  const hint = useGameStore((s) => s.useHint)
+  const ring = useRef(null)
+  const held = useRef(false)
+  const release = () => {
+    if (!held.current) return
+    held.current = false
+    touchRelease('Touch:use')
+  }
+  // Let go when the button goes (planted, walked off) or the controls close.
+  useEffect(() => {
+    if (!hint) release()
+  }, [hint])
+  useEffect(() => release, [])
+  useAnimationFrame(() => {
+    const el = ring.current
+    if (!el) return
+    const s = runtime.snd
+    const mine = Boolean(s.action) && s.by === useGameStore.getState().myId
+    el.style.strokeDashoffset = String(100 - (mine ? s.progress : 0) * 100)
+  })
+  if (!hint) return null
+  return (
+    <div
+      className={`dl-tc-btn use ${hint}`}
+      style={place(USE_BTN)}
+      role="button"
+      aria-label={hint === 'plant' ? 'Plant the bomb' : 'Defuse the bomb'}
+      onPointerDown={(e) => {
+        e.stopPropagation()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        e.currentTarget.classList.add('on')
+        held.current = true
+        touchPress('Touch:use')
+      }}
+      onPointerUp={(e) => {
+        e.stopPropagation()
+        e.currentTarget.classList.remove('on')
+        release()
+      }}
+      onPointerCancel={(e) => {
+        e.currentTarget.classList.remove('on')
+        release()
+      }}
+    >
+      <svg className="dl-use-ring" viewBox="0 0 40 40" aria-hidden="true">
+        <circle ref={ring} cx="20" cy="20" r="18" pathLength="100" />
+      </svg>
+      <Icon name={hint === 'plant' ? 'bomb' : 'defuse'} className="glyph" />
+      <span className="lbl">{hint === 'plant' ? 'PLANT' : 'DEFUSE'}</span>
+    </div>
   )
 }
 
@@ -300,6 +372,7 @@ export function TouchControls({ scale }) {
       <div className="dl-tc-knob" ref={knob} />
       {RIGHT.map((b) => button(b))}
       {button(LEFT_FIRE, 'left')}
+      <UseButton />
       <div className="dl-tc-top" style={{ left: topLeft }}>
         <div
           className="dl-tc-small"

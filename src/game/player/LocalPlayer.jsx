@@ -11,6 +11,7 @@ import { activeMap } from '../../store/gameStore.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { castMap } from '../physicsQueries.js'
 import { on, runtime } from '../runtime.js'
+import { actionHint, frozen } from '../snd.js'
 import { endInputFrame, input, isDown, wasPressed } from './input.js'
 import { WeaponSystem } from './weaponSystem.js'
 
@@ -76,6 +77,9 @@ export function LocalPlayer() {
     aimCheck: 0,
     /** After a jump, brushing a ledge must not count as landing (it would kill the jump). */
     airLockUntil: 0,
+    /** Search & Destroy: Use held (planting or defusing), and the next tick sound. */
+    using: false,
+    useTick: 0,
   })
 
   // --- Physics body ------------------------------------------------------------
@@ -170,6 +174,23 @@ export function LocalPlayer() {
     const alive = l.alive && playing
     const canAct = alive && input.locked && !game.overlay
 
+    // Search & Destroy: holding Use on a site plants, on the bomb defuses. The
+    // server runs the clock; this only says when the key is held, and roots you.
+    const hint = canAct ? actionHint() : ''
+    const using = Boolean(hint) && isDown('use')
+    if (using !== s.using) {
+      s.using = using
+      s.useTick = 0
+      net.send('use', { on: using })
+    }
+    if (hint !== game.useHint) useGameStore.setState({ useHint: hint })
+    if (using && (s.useTick -= delta) <= 0) {
+      s.useTick = 0.5
+      sfx.play('plantTick', { volume: 0.7 })
+    }
+    // Frozen before the round goes live (look around, nothing else).
+    const canMove = canAct && !using && !frozen()
+
     if (!alive || !s.collider) {
       endInputFrame()
       return
@@ -190,7 +211,7 @@ export function LocalPlayer() {
     // --- Movement intent -----------------------------------------------------------
     let ix = 0
     let iz = 0
-    if (canAct) {
+    if (canMove) {
       iz = (isDown('forward') ? 1 : 0) - (isDown('back') ? 1 : 0)
       ix = (isDown('right') ? 1 : 0) - (isDown('left') ? 1 : 0)
       // The touch stick, analog: a light push walks slowly.
@@ -263,14 +284,14 @@ export function LocalPlayer() {
     }
     if (s.climbing && s.stance !== 'stand') changeStance('stand')
 
-    const sprintHeld = canAct && isDown('sprint') && !input.mouse.right
+    const sprintHeld = canMove && isDown('sprint') && !input.mouse.right
     s.sprinting =
       sprintHeld && iz > 0 && s.grounded && s.stance === 'stand' && !s.slide && !ws.cooking && now >= s.sprintBlockUntil && !s.climbing
     const crawling = s.stance === 'prone' && Math.hypot(v.x, v.z) > 0.6
-    const lowered = s.stance === 'prone' && (crawling || now < s.proneLockUntil)
+    const lowered = (s.stance === 'prone' && (crawling || now < s.proneLockUntil)) || using
     const ctx = {
       camera,
-      canAct,
+      canAct: canMove,
       alive,
       climbing: s.climbing,
       sprinting: s.sprinting,
@@ -387,7 +408,7 @@ export function LocalPlayer() {
     // --- Gravity / jump -------------------------------------------------------------
     if (!s.climbing) {
       if (s.grounded) {
-        if (canAct && wasPressed('jump')) {
+        if (canMove && wasPressed('jump')) {
           if (s.slide && roomFor('stand')) {
             // Slide-cancel jump: stand, hop, keep the momentum.
             endSlide()

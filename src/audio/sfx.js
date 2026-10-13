@@ -479,6 +479,51 @@ const SOUNDS = {
   countdown(out) {
     tone(out, { dur: 0.06, type: 'square', from: 900, peak: 0.07 })
   },
+  /* Search & Destroy. */
+  /** The planted bomb's beep (faster as it runs down; the caller times it). */
+  bombBeep(out) {
+    tone(out, { dur: 0.09, type: 'square', from: 2100, peak: 0.09 })
+    tone(out, { dur: 0.12, type: 'sine', from: 2100, peak: 0.12 })
+  },
+  /** Arming: a click, then a rising two-tone chirp. */
+  bombPlanted(out) {
+    noise(out, { dur: 0.05, freq: 2600, q: 5, peak: 0.4 })
+    tone(out, { start: 0.12, dur: 0.14, type: 'square', from: 1200, peak: 0.08 })
+    tone(out, { start: 0.28, dur: 0.22, type: 'square', from: 1800, peak: 0.08 })
+  },
+  /** Disarmed: the beeping winds down. */
+  bombDefused(out) {
+    tone(out, { dur: 0.55, type: 'triangle', from: 1600, to: 300, peak: 0.16 })
+    noise(out, { start: 0.05, dur: 0.05, freq: 3200, q: 6, peak: 0.25 })
+  },
+  /** Every half-second while planting or defusing. */
+  plantTick(out) {
+    noise(out, { dur: 0.03, freq: 3600, q: 8, peak: 0.18 })
+  },
+  /** The bomb going off, heard everywhere: a deep roll under the positioned blast. */
+  bombBlast(out) {
+    const wet = echo(out, 0.42, 0.42, 420)
+    tone(wet, { dur: 2.4, from: 48, to: 18, peak: 1, attack: 0.01 })
+    noise(wet, { dur: 2.8, type: 'lowpass', freq: 520, sweepTo: 70, peak: 0.9, attack: 0.02 })
+  },
+  /** A round about to start: low swell and two notes. */
+  roundStart(out) {
+    tone(out, { dur: 0.9, type: 'triangle', from: 98, peak: 0.14, attack: 0.1 })
+    tone(out, { dur: 0.18, type: 'triangle', from: 440, peak: 0.12 })
+    tone(out, { start: 0.2, dur: 0.3, type: 'triangle', from: 587, peak: 0.12 })
+  },
+  roundGo(out) {
+    tone(out, { dur: 0.08, type: 'sawtooth', from: 330, to: 660, peak: 0.08 })
+    tone(out, { start: 0.07, dur: 0.35, type: 'triangle', from: 880, peak: 0.16 })
+  },
+  roundWin(out) {
+    for (const [i, f] of [523, 659, 784, 1047].entries()) tone(out, { start: i * 0.09, dur: i === 3 ? 0.7 : 0.14, type: 'triangle', from: f, peak: 0.14 })
+    tone(out, { dur: 1, type: 'triangle', from: 131, peak: 0.14, attack: 0.06 })
+  },
+  roundLoss(out) {
+    for (const [i, f] of [392, 349, 294].entries()) tone(out, { start: i * 0.16, dur: i === 2 ? 0.8 : 0.2, type: 'triangle', from: f, peak: 0.13 })
+    tone(out, { dur: 1.1, type: 'sine', from: 73, peak: 0.16, attack: 0.08 })
+  },
 }
 
 /**
