@@ -1517,6 +1517,27 @@
   background: rgba(255, 255, 255, 0.05);
   text-align: center;
 }
+/* Touch controls: the button's icon before its name. */
+.dl-keys kbd.icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+}
+.dl-keys kbd svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dl-keys kbd svg .solid {
+  fill: currentColor;
+  stroke: none;
+}
 
 .dl-fps {
   position: absolute;
@@ -2364,57 +2385,78 @@
   -webkit-touch-callout: none;
   font-family: var(--head);
 }
+/* Dark glass, so the game shows through: a thin white ring, icons only. No
+   backdrop blur (it smears the game behind and costs a phone an extra pass).
+   How solid they are is the player's Button opacity (--tc-alpha). */
 .dl-tc-btn,
 .dl-tc-small {
   position: absolute;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: calc(var(--u) * 0.4);
   border-radius: 50%;
-  background: rgba(14, 16, 20, 0.34);
-  border: 1.5px solid rgba(232, 230, 225, 0.42);
-  color: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(2px);
+  background: radial-gradient(circle at 50% 38%, rgba(40, 46, 56, 0.32), rgba(8, 10, 14, 0.5) 72%);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    inset 0 0 0 calc(var(--u) * 0.45) rgba(255, 255, 255, 0.06),
+    0 calc(var(--u) * 0.3) calc(var(--u) * 1.6) rgba(0, 0, 0, 0.28);
+  color: #fff;
+  opacity: var(--tc-alpha, 0.7);
   transition:
+    opacity var(--fast),
     background var(--fast),
+    border-color var(--fast),
     transform 80ms;
 }
 .dl-tc-btn svg,
 .dl-tc-small svg {
-  width: 46%;
-  height: 46%;
+  width: 50%;
+  height: 50%;
+  overflow: visible;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 2.1;
   stroke-linecap: round;
   stroke-linejoin: round;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.75));
 }
-.dl-tc-btn span {
-  font-size: calc(var(--u) * 2.1);
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  line-height: 1;
+.dl-tc-btn svg .solid,
+.dl-tc-small svg .solid {
+  fill: currentColor;
+  stroke: none;
 }
+/* Fire: a glowing gold ring round a gold cartridge. */
 .dl-tc-btn.fire {
-  background: rgba(229, 72, 77, 0.28);
-  border-color: rgba(255, 170, 160, 0.6);
+  border: calc(var(--u) * 0.55) solid rgba(242, 178, 74, 0.85);
+  background: radial-gradient(circle at 50% 42%, rgba(52, 42, 22, 0.3), rgba(10, 10, 12, 0.55) 70%);
+  box-shadow:
+    0 0 calc(var(--u) * 1.8) rgba(242, 163, 58, 0.45),
+    inset 0 0 calc(var(--u) * 1.6) rgba(242, 163, 58, 0.3);
+  color: #ffd98a;
 }
 .dl-tc-btn.fire svg {
-  width: 42%;
-  height: 42%;
+  width: 44%;
+  height: 44%;
+  filter: drop-shadow(0 0 3px rgba(242, 163, 58, 0.7));
 }
 .dl-tc-btn.on,
 .dl-tc-small.on {
-  background: rgba(242, 163, 58, 0.5);
-  transform: scale(0.94);
+  opacity: 1;
+  border-color: var(--accent);
+  background: radial-gradient(circle, rgba(242, 163, 58, 0.38), rgba(10, 10, 12, 0.5) 75%);
+  transform: scale(0.93);
+}
+.dl-tc-btn.fire.on {
+  box-shadow:
+    0 0 calc(var(--u) * 3) rgba(255, 190, 80, 0.8),
+    inset 0 0 calc(var(--u) * 2.4) rgba(255, 190, 80, 0.5);
 }
 .dl-tc-btn.latched,
 .dl-tc-small.latched {
-  background: rgba(242, 163, 58, 0.42);
+  opacity: 1;
   border-color: var(--accent);
+  color: #ffd98a;
+  background: radial-gradient(circle, rgba(242, 163, 58, 0.3), rgba(10, 10, 12, 0.5) 75%);
 }
 .dl-tc-top {
   position: absolute;
@@ -2424,10 +2466,10 @@
 }
 .dl-tc-small {
   position: relative;
-  width: calc(var(--u) * 9.5);
-  height: calc(var(--u) * 9.5);
-  border-radius: 4px;
+  width: calc(var(--u) * 9);
+  height: calc(var(--u) * 9);
 }
+/* The stick: dimmed at rest bottom-left, brighter under the thumb. */
 .dl-tc-stick,
 .dl-tc-knob {
   position: absolute;
@@ -2435,21 +2477,47 @@
   top: 0;
   border-radius: 50%;
   pointer-events: none;
-  opacity: 0;
+  opacity: calc(var(--tc-alpha, 0.7) * 0.75);
+  transition: opacity var(--fast);
+}
+.dl-tc-stick.active,
+.dl-tc-knob.active {
+  opacity: max(0.85, var(--tc-alpha, 0.7));
 }
 .dl-tc-stick {
   width: calc(var(--u) * 24);
   height: calc(var(--u) * 24);
   margin: calc(var(--u) * -12) 0 0 calc(var(--u) * -12);
-  border: 2px solid rgba(232, 230, 225, 0.35);
-  background: rgba(14, 16, 20, 0.22);
+}
+.dl-tc-stick svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.dl-tc-stick .rim {
+  fill: rgba(8, 10, 14, 0.34);
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 1.4;
+}
+.dl-tc-stick .inner {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1;
+}
+.dl-tc-stick .arrows {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .dl-tc-knob {
   width: calc(var(--u) * 10);
   height: calc(var(--u) * 10);
   margin: calc(var(--u) * -5) 0 0 calc(var(--u) * -5);
-  background: rgba(232, 230, 225, 0.55);
-  box-shadow: 0 0 calc(var(--u) * 2) rgba(0, 0, 0, 0.4);
+  background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.5), rgba(200, 205, 212, 0.22) 70%);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 calc(var(--u) * 1.6) rgba(0, 0, 0, 0.35);
 }
 
 /* Held upright: ask for landscape. */

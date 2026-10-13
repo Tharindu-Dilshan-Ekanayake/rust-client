@@ -5,9 +5,11 @@ import { useGameStore } from '../store/gameStore.js'
 
 /**
  * On-screen controls for phones and tablets, laid over the game while you play.
+ * See-through glass buttons with icons only (no labels), so they hide as little
+ * of the game as possible; how solid they are is a setting (Button opacity).
  *
- *  - Left side: a floating stick, wherever your thumb lands. Pushed all the way
- *    forward, you sprint.
+ *  - Left side: a stick, shown at rest bottom-left and jumping to wherever your
+ *    thumb lands on that side. Pushed all the way forward, you sprint.
  *  - Right side: drag anywhere to look. The fire button looks too while held,
  *    so you can shoot and track at once.
  *  - A cluster round the fire button (aim, jump, crouch, reload, swap, grenades,
@@ -30,37 +32,87 @@ const unit = () => Math.min(window.innerHeight / 100, 5.2)
 
 /** The cluster round the fire button: centres and radii in --u from the bottom-right corner. */
 const RIGHT = [
-  { id: 'fire', cx: 20, cy: 22, r: 10, label: 'Fire', icon: 'fire' },
+  { id: 'fire', cx: 20, cy: 22, r: 10, label: 'Fire', icon: 'bullet' },
   { id: 'aim', cx: 37.5, cy: 11, r: 6.5, label: 'Aim', icon: 'aim' },
   { id: 'crouch', cx: 8, cy: 8, r: 6, label: 'Crouch', icon: 'crouch', code: 'Touch:crouch' },
   { id: 'jump', cx: 7, cy: 37, r: 6, label: 'Jump', icon: 'jump', code: 'Touch:jump' },
   { id: 'reload', cx: 34, cy: 31, r: 5.5, label: 'Reload', icon: 'reload', code: 'Touch:reload' },
   { id: 'swap', cx: 20, cy: 44, r: 5.5, label: 'Swap', icon: 'swap' },
   { id: 'lethal', cx: 33, cy: 46, r: 5, label: 'Frag', icon: 'frag', code: 'Touch:lethal' },
-  { id: 'tactical', cx: 45, cy: 39, r: 5, label: 'Tac', icon: 'tactical', code: 'Touch:tactical' },
+  { id: 'tactical', cx: 45, cy: 39, r: 5, label: 'Tactical', icon: 'tactical', code: 'Touch:tactical' },
   { id: 'knife', cx: 47, cy: 24, r: 5, label: 'Knife', icon: 'knife', code: 'Touch:knife' },
 ]
 /** The left fire button: from the bottom-left corner. */
-const LEFT_FIRE = { id: 'fireL', cx: 10, cy: 40, r: 6, label: 'Fire', icon: 'fire' }
+const LEFT_FIRE = { id: 'fireL', cx: 10, cy: 40, r: 6, label: 'Fire', icon: 'bullet' }
+/** Where the stick rests when no thumb is on it: from the bottom-left corner, in --u. */
+const STICK_REST = { cx: 22, cy: 21 }
 
-const PATHS = {
-  fire: 'M12 3v5M12 16v5M3 12h5M16 12h5M12 12h.01M17.5 12a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z',
-  aim: 'M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
-  crouch: 'M6 9l6 6 6-6',
-  jump: 'M6 15l6-6 6 6',
-  reload: 'M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5',
-  swap: 'M7 7h12l-3-3M17 17H5l3 3',
-  frag: 'M12 21a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM10 9V6h4v3M14 6l3-2',
-  tactical: 'M8 9h8v11H8zM10 6h4v3h-4z',
-  knife: 'M4 20l9-9M13 11l7-7-1 6-6 4',
-  pause: 'M8 5v14M16 5v14',
-  scores: 'M4 6h16M4 12h16M4 18h16',
+/**
+ * Icons on a 24 x 24 grid, as parts: `f` filled silhouettes (the cartridge,
+ * magazine, grenade, knife, heads), the rest drawn as thick round lines.
+ */
+const ICONS = {
+  bullet: [
+    { f: 1, d: 'M12 1.8c1.9 1.7 2.9 3.9 2.9 6.4v.9H9.1v-.9c0-2.5 1-4.7 2.9-6.4z' },
+    { f: 1, d: 'M9.1 10.2h5.8v9.4H9.1z' },
+    { f: 1, d: 'M8.2 20.4h7.6v1.9H8.2z' },
+  ],
+  aim: [
+    { d: 'M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14z' },
+    { d: 'M12 1.8v5.4M12 16.8v5.4M1.8 12h5.4M16.8 12h5.4' },
+    { f: 1, d: 'M12 13.3a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6z' },
+  ],
+  crouch: [
+    { f: 1, d: 'M14.6 6.4a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6z' },
+    { d: 'M13.6 8.6l-2.6 5.4 5 1.6v5.2M11 14l-2 5.6h3.2M12.8 10.4l5.6 1.4h3' },
+  ],
+  jump: [
+    { f: 1, d: 'M12 6a2.3 2.3 0 1 0 0-4.6A2.3 2.3 0 0 0 12 6z' },
+    { d: 'M12 8.2v6M7.6 9.6l4.4-1.4 4.4 1.4M12 14.2l-3.6 2.6.8 3.4M12 14.2l3.6 2.6-.8 3.4M4 22h4M16 22h4' },
+  ],
+  reload: [
+    { d: 'M9.4 2.4h5.2l-.6 5c1.8 2.8 2.8 6.2 2.8 9.8v4.4H7.2v-4.4c0-3.6 1-7 2.8-9.8zM9.6 15.4h4.8' },
+    { f: 1, d: 'M10.4 4.2h3.2v1.6h-3.2z' },
+  ],
+  swap: [{ d: 'M4 8h13.5l-3-3M20 16H6.5l3 3' }],
+  frag: [
+    { f: 1, d: 'M12 22.2a6.2 6.4 0 1 0 0-12.8 6.2 6.4 0 0 0 0 12.8zM9.6 6.2h4.8v3.6H9.6z' },
+    { d: 'M14.4 7.2l3.6-2.6v4.4M8.4 6.4a2.4 2.4 0 1 1 1.6-2.2' },
+  ],
+  tactical: [
+    { f: 1, d: 'M8 8.6h8v13.6H8zM9.6 5h4.8v2.6H9.6z' },
+    { d: 'M14.4 6l3.4-2.6v5' },
+  ],
+  knife: [
+    { f: 1, d: 'M6 18.2L17 6.6c1.6-1.7 3.4-3.1 5.2-4.4-.9 2.4-2.2 4.6-3.8 6.4L7.8 20z' },
+    { d: 'M5.2 15.6l3.4 3.4M2.2 21.8l3.4-3.4' },
+  ],
+  pause: [{ d: 'M8.5 5v14M15.5 5v14' }],
+  scores: [{ d: 'M4 6h16M4 12h16M4 18h16' }],
+}
+
+/** A control's icon, as drawn on its button (the settings page lists them). */
+export function TouchIcon({ name }) {
+  return <Icon name={name} />
 }
 
 function Icon({ name }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d={PATHS[name]} />
+      {ICONS[name].map((p, i) => (
+        <path key={i} d={p.d} className={p.f ? 'solid' : undefined} />
+      ))}
+    </svg>
+  )
+}
+
+/** The stick's base: a ring with an arrow at each point of the compass. */
+function StickBase() {
+  return (
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="47" className="rim" />
+      <circle cx="50" cy="50" r="38" className="inner" />
+      <path d="M43 17l7-7 7 7M43 83l7 7 7-7M17 43l-7 7 7 7M83 43l7 7-7 7" className="arrows" />
     </svg>
   )
 }
@@ -80,6 +132,7 @@ export function TouchControls({ scale }) {
   const st = useRef({ stick: null, look: null, fire: new Map() })
   const [aiming, setAiming] = useState(false)
   const scoreboardOpen = useGameStore((s) => s.scoreboardOpen)
+  const opacity = useGameStore((s) => s.settings.touchOpacity ?? 0.7)
 
   // Clean slate on the way in and out (an overlay, death, leaving the match).
   useEffect(() => {
@@ -97,15 +150,33 @@ export function TouchControls({ scale }) {
     const b = base.current
     const k = knob.current
     if (!b || !k) return
-    b.style.opacity = '1'
+    b.classList.add('active')
+    k.classList.add('active')
     b.style.transform = `translate(${x}px, ${y}px)`
     k.style.transform = `translate(${x + kx}px, ${y + ky}px)`
-    k.style.opacity = '1'
   }
-  const hideStick = () => {
-    if (base.current) base.current.style.opacity = '0'
-    if (knob.current) knob.current.style.opacity = '0'
+  /** Back to its resting place bottom-left, dimmed. */
+  const restStick = () => {
+    const b = base.current
+    const k = knob.current
+    if (!b || !k) return
+    const u = unit()
+    const x = STICK_REST.cx * u
+    const y = window.innerHeight - STICK_REST.cy * u
+    b.classList.remove('active')
+    k.classList.remove('active')
+    b.style.transform = `translate(${x}px, ${y}px)`
+    k.style.transform = `translate(${x}px, ${y}px)`
   }
+  // At rest from the start, and again whenever the screen turns or resizes.
+  useEffect(() => {
+    restStick()
+    const onResize = () => {
+      if (!st.current.stick) restStick()
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   /** The background: left side drives the stick, right side looks. */
   const onSurfaceDown = (e) => {
@@ -151,7 +222,7 @@ export function TouchControls({ scale }) {
       s.stick = null
       touchMove(0, 0)
       touchRelease('Touch:sprint')
-      hideStick()
+      restStick()
     } else if (s.look?.id === e.pointerId) {
       s.look = null
     }
@@ -159,12 +230,13 @@ export function TouchControls({ scale }) {
 
   /** A button: press on touch, release on lift (the pointer is captured, so sliding off doesn't drop it). */
   const button = (b, side = 'right') => {
+    const fire = b.icon === 'bullet'
     const down = (e) => {
       e.stopPropagation()
       e.currentTarget.setPointerCapture(e.pointerId)
       e.currentTarget.classList.add('on')
       if (b.code) touchPress(b.code)
-      else if (b.icon === 'fire') {
+      else if (fire) {
         st.current.fire.set(e.pointerId, { x: e.clientX, y: e.clientY })
         touchMouse('left', true)
       } else if (b.id === 'aim') {
@@ -187,7 +259,7 @@ export function TouchControls({ scale }) {
       e.stopPropagation()
       e.currentTarget.classList.remove('on')
       if (b.code) touchRelease(b.code)
-      else if (b.icon === 'fire') {
+      else if (fire) {
         st.current.fire.delete(e.pointerId)
         if (!st.current.fire.size) touchMouse('left', false)
       }
@@ -195,15 +267,16 @@ export function TouchControls({ scale }) {
     return (
       <div
         key={b.id}
-        className={`dl-tc-btn ${b.id === 'fire' || b.id === 'fireL' ? 'fire' : ''} ${b.id === 'aim' && aiming ? 'latched' : ''}`}
+        className={`dl-tc-btn ${fire ? 'fire' : ''} ${b.id === 'aim' && aiming ? 'latched' : ''}`}
         style={place(b, side)}
+        role="button"
+        aria-label={b.label}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
         onPointerCancel={up}
       >
         <Icon name={b.icon} />
-        {b.r >= 6 && <span>{b.label}</span>}
       </div>
     )
   }
@@ -215,18 +288,23 @@ export function TouchControls({ scale }) {
     <div
       className="dl-tc"
       ref={surface}
+      style={{ '--tc-alpha': opacity }}
       onPointerDown={onSurfaceDown}
       onPointerMove={onSurfaceMove}
       onPointerUp={onSurfaceUp}
       onPointerCancel={onSurfaceUp}
     >
-      <div className="dl-tc-stick" ref={base} />
+      <div className="dl-tc-stick" ref={base}>
+        <StickBase />
+      </div>
       <div className="dl-tc-knob" ref={knob} />
       {RIGHT.map((b) => button(b))}
       {button(LEFT_FIRE, 'left')}
       <div className="dl-tc-top" style={{ left: topLeft }}>
         <div
           className="dl-tc-small"
+          role="button"
+          aria-label="Pause"
           onPointerDown={(e) => {
             e.stopPropagation()
             releaseLock()
@@ -236,6 +314,8 @@ export function TouchControls({ scale }) {
         </div>
         <div
           className={`dl-tc-small ${scoreboardOpen ? 'latched' : ''}`}
+          role="button"
+          aria-label="Scores"
           onPointerDown={(e) => {
             e.stopPropagation()
             useGameStore.setState((s) => ({ scoreboardOpen: !s.scoreboardOpen }))

@@ -116,6 +116,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   musicVolume: 0.3,
   /** Lower the render scale automatically when the frame rate drops. */
   adaptive: true,
+  /** How solid the on-screen buttons are (phones and tablets): see-through by default. */
+  touchOpacity: 0.7,
 })
 
 /** The player's rank number from their stored XP. */

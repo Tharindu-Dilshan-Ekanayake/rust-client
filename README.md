@@ -137,8 +137,14 @@ browser allows it (inside the Bloxity portal, the portal goes full screen).
   the game view keeps most of the screen and nothing overlaps. The UI root is a
   size container, so its CSS uses `cqw` / `cqh` and `@container` queries
   rather than the viewport.
-- **Touch controls** (`ui/TouchControls.jsx`), while you play:
-  - Left thumb: a stick appears wherever you touch. Push it all the way up to sprint.
+- **Touch controls** (`ui/TouchControls.jsx`), while you play. See-through
+  dark-glass buttons with a thin ring and an icon (no labels), Fire in a
+  glowing gold ring, so they hide as little of the game as possible. **Button
+  opacity** (Settings, 25-100%, 70% by default) sets how solid they are; the
+  settings page lists every button with its icon. No backdrop blur: it smeared
+  the game behind the buttons and cost a phone an extra pass.
+  - Left thumb: the stick rests bottom-left (dimmed, an arrow at each point)
+    and jumps to wherever you touch on that side. Push it all the way up to sprint.
   - Right side: drag to look. Holding Fire also looks.
   - Buttons: Fire (plus a second one on the left), Aim (tap on / off), Jump,
     Crouch (tap) / prone (hold) / slide (while sprinting), Reload, Swap, Frag
