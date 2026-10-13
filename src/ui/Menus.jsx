@@ -9,6 +9,7 @@ import { MapPicker } from './MapPicker.jsx'
 import { goFullscreen } from './mobile.js'
 import { IS_TOUCH } from '../game/player/input.js'
 import { RankCard } from './Progression.jsx'
+import { TouchIcon } from './TouchControls.jsx'
 
 const COMMON_TIPS = [
   ['Cook grenades', ' by holding G — release to throw. Hold too long and it goes off in your hand.'],
@@ -236,21 +237,21 @@ const KEYS = [
   ['Esc', 'Menu'],
 ]
 
-/** The same, for the on-screen controls (ui/TouchControls.jsx). */
+/** The same, for the on-screen controls (ui/TouchControls.jsx), with each button's icon. */
 const TOUCH_KEYS = [
-  ['Left thumb', 'Move: the stick appears where you touch'],
+  ['Left thumb', 'Move: the stick jumps to where you touch'],
   ['Stick fully up', 'Sprint'],
   ['Right side drag', 'Look'],
-  ['Fire', 'Fire (drag while holding to aim)'],
-  ['Aim', 'Aim down sights (tap on / off)'],
-  ['Jump', 'Jump'],
-  ['Crouch', 'Crouch (tap) · prone (hold) · slide (while sprinting)'],
-  ['Reload', 'Reload'],
-  ['Swap', 'Primary / secondary'],
-  ['Frag (hold)', 'Cook + throw frag'],
-  ['Tac', 'Tactical (flash / smoke)'],
-  ['Knife', 'Quick knife'],
-  ['Top buttons', 'Menu · scoreboard'],
+  ['Fire', 'Fire (drag while holding to aim)', 'bullet'],
+  ['Aim', 'Aim down sights (tap on / off)', 'aim'],
+  ['Jump', 'Jump', 'jump'],
+  ['Crouch', 'Crouch (tap) · prone (hold) · slide (while sprinting)', 'crouch'],
+  ['Reload', 'Reload', 'reload'],
+  ['Swap', 'Primary / secondary', 'swap'],
+  ['Frag (hold)', 'Cook + throw frag', 'frag'],
+  ['Tactical', 'Tactical (flash / smoke)', 'tactical'],
+  ['Knife', 'Quick knife', 'knife'],
+  ['Top buttons', 'Menu · scoreboard', 'pause'],
 ]
 
 export function SettingsPanel({ onBack }) {
@@ -306,6 +307,7 @@ export function SettingsPanel({ onBack }) {
           {slider('sensitivity', IS_TOUCH ? 'Look sensitivity' : 'Mouse sensitivity', 0.2, 3, 0.05)}
           {slider('adsSensitivity', 'ADS sensitivity', 0.3, 1.5, 0.05)}
           {toggle('invertY', 'Invert Y')}
+          {IS_TOUCH && slider('touchOpacity', 'Button opacity', 0.25, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
           <div className="dl-label" style={{ marginTop: 10 }}>
             Video
           </div>
@@ -333,9 +335,12 @@ export function SettingsPanel({ onBack }) {
         <div className="dl-panel dl-detail">
           <div className="dl-label">{IS_TOUCH ? 'Touch controls' : 'Key bindings'}</div>
           <div className="dl-keys">
-            {(IS_TOUCH ? TOUCH_KEYS : KEYS).map(([k, v]) => (
+            {(IS_TOUCH ? TOUCH_KEYS : KEYS).map(([k, v, icon]) => (
               <span key={k} style={{ display: 'contents' }}>
-                <kbd>{k}</kbd>
+                <kbd className={icon ? 'icon' : undefined}>
+                  {icon && <TouchIcon name={icon} />}
+                  {k}
+                </kbd>
                 <span>{v}</span>
               </span>
             ))}
