@@ -342,9 +342,18 @@ function buildCar(model, color, wreck) {
   // Glasshouse: windows all round under a painted roof, pillars at the corners.
   const rake = model === 'wagon' ? 0.45 : 0.5
   const back = model === 'wagon' || m.bed ? 0.06 : 0.42
-  const glass = [[c0, y1], [c0 + rake, m.cabinTop - 0.05], [c1 - back, m.cabinTop - 0.05], [c1, y1]]
-  if (!wreck) P.add(acres.glass(), profile(glass, m.cabinW - 0.12), [0, 0, 0])
-  P.box(paint, 0, m.cabinTop - 0.02, (c0 + rake + c1 - back) / 2, m.cabinW, 0.07, c1 - back - c0 - rake + 0.08, 1)
+  if (m.van) {
+    // A van: windscreen and cab windows up front, a panelled box behind.
+    const cabEnd = c0 + 1.25
+    if (!wreck) P.add(acres.glass(), profile([[c0, y1], [c0 + rake, m.cabinTop - 0.05], [cabEnd, m.cabinTop - 0.05], [cabEnd, y1]], m.cabinW - 0.12), [0, 0, 0])
+    P.box(paint, 0, (y1 + m.cabinTop) / 2, (cabEnd + c1) / 2, m.cabinW, m.cabinTop - y1, c1 - cabEnd, 1)
+    P.box(paint, 0, m.cabinTop - 0.02, (c0 + rake + c1) / 2, m.cabinW, 0.07, c1 - c0 - rake + 0.04, 1)
+    for (const s of [-1, 1]) P.box(acres.paint('#2a2a2a', 0.6), s * (m.cabinW / 2 + 0.006), (y1 + m.cabinTop) / 2, cabEnd + 0.9, 0.01, m.cabinTop - y1 - 0.2, 0.02, 1)
+  } else {
+    const glass = [[c0, y1], [c0 + rake, m.cabinTop - 0.05], [c1 - back, m.cabinTop - 0.05], [c1, y1]]
+    if (!wreck) P.add(acres.glass(), profile(glass, m.cabinW - 0.12), [0, 0, 0])
+    P.box(paint, 0, m.cabinTop - 0.02, (c0 + rake + c1 - back) / 2, m.cabinW, 0.07, c1 - back - c0 - rake + 0.08, 1)
+  }
   for (const s of [-1, 1]) {
     const x = s * (m.cabinW / 2 - 0.03)
     const pillar = (za, zb) => {
@@ -353,8 +362,10 @@ function buildCar(model, color, wreck) {
       P.box(paint, x, (za[1] + zb[1]) / 2, (za[0] + zb[0]) / 2, 0.07, len, 0.08, 1, [ang, 0, 0])
     }
     pillar([c0, y1], [c0 + rake, m.cabinTop - 0.05])
-    pillar([c1, y1], [c1 - back, m.cabinTop - 0.05])
-    if (c1 - c0 > 2) pillar([(c0 + c1) / 2, y1], [(c0 + c1) / 2, m.cabinTop - 0.05])
+    if (!m.van) {
+      pillar([c1, y1], [c1 - back, m.cabinTop - 0.05])
+      if (c1 - c0 > 2) pillar([(c0 + c1) / 2, y1], [(c0 + c1) / 2, m.cabinTop - 0.05])
+    }
     // Chrome side spear.
     P.box(chrome, s * (m.w / 2 + 0.008), y1 - 0.2, 0, 0.012, 0.04, L - 1.2, 1)
   }

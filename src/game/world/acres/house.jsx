@@ -69,11 +69,16 @@ function buildHouse(h) {
   const P = new Pieces()
   const t = WALL_T
   const look = h.look
-  const colors = INTERIOR[h.id] ?? ['#ece8de']
-  const inside = (floor) => acres.interior(colors[Math.min(floor, colors.length - 1)])
+  const colors = look.interior ?? INTERIOR[h.id] ?? ['#ece8de']
+  const inside = (floor) => {
+    const color = colors[Math.min(floor, colors.length - 1)]
+    return look.lit ? acres.interiorLit(color, look.lit) : acres.interior(color)
+  }
   const trim = acres.trim(look.trim)
-  const lowerSiding = acres.siding(look.lower)
-  const upperSiding = acres.siding(look.upper ?? look.lower)
+  // Stone or brick walls (Hollow Creek's church) instead of siding.
+  const wallOf = (name) => (name === 'stone' ? acres.stone() : name === 'brick' ? acres.brick() : acres.siding(name))
+  const lowerSiding = wallOf(look.lower)
+  const upperSiding = wallOf(look.upper ?? look.lower)
   const base = look.base === 'stone' ? acres.stone() : look.base === 'brick' ? acres.brick() : look.base ? acres.concrete() : null
   const garageInside = acres.interior('#d9d5cb')
 
@@ -127,9 +132,11 @@ function buildHouse(h) {
   }
 
   /* ---- Doors and windows ------------------------------------------------ */
-  const doorMat = acres.paint(DOOR_COLORS[h.id] ?? '#f4f1e8', 0.5)
+  const doorMat = acres.paint(look.door ?? DOOR_COLORS[h.id] ?? '#f4f1e8', 0.5)
   const shutter = look.shutters ? acres.shutter(look.shutters) : null
-  const curtain = acres.fabric(CURTAINS[h.id] ?? '#d8c6a8')
+  // `curtains: null` leaves the windows bare; `glow` lights them from inside.
+  const curtainColor = look.curtains === undefined ? CURTAINS[h.id] ?? '#d8c6a8' : look.curtains
+  const curtain = curtainColor ? (look.glow ? acres.glowFabric(curtainColor) : acres.fabric(curtainColor)) : null
   for (const o of houseOpenings(h)) {
     const along = o.axis === 'x' ? [1, 0] : [0, 1]
     const normal = o.axis === 'x' ? [0, 1] : [1, 0]
@@ -171,8 +178,10 @@ function buildHouse(h) {
     if (o.side === 'inner') continue
     // Window: sill outside, a valance and side curtains inside.
     put(trim, 0, o.y0 - 0.02, sign * (o.t / 2 + 0.06), w + 0.26, 0.06, 0.16)
-    put(curtain, 0, o.y1 - 0.1, -sign * (o.t / 2 + 0.05), w + 0.16, 0.18, 0.04)
-    for (const s of [-1, 1]) put(curtain, s * (w / 2 - 0.02), ym - 0.08, -sign * (o.t / 2 + 0.05), 0.16, hgt - 0.22, 0.04)
+    if (curtain) {
+      put(curtain, 0, o.y1 - 0.1, -sign * (o.t / 2 + 0.05), w + 0.16, 0.18, 0.04)
+      for (const s of [-1, 1]) put(curtain, s * (w / 2 - 0.02), ym - 0.08, -sign * (o.t / 2 + 0.05), 0.16, hgt - 0.22, 0.04)
+    }
     if (shutter && h.look.modern !== true) {
       const sw = Math.min(0.5, Math.max(0.32, w * 0.3))
       for (const s of [-1, 1]) put(shutter, s * (w / 2 + 0.1 + sw / 2), ym, sign * (o.t / 2 + 0.04), sw, hgt, 0.04)
@@ -187,7 +196,7 @@ function buildHouse(h) {
     P.aabb(acres.checker(), k.x0, 0, k.z0, k.x1, 0.02, k.z1, 2)
   }
   for (const r of f0.kitchen ? rectMinus(room, f0.kitchen) : [room]) P.aabb(floorMaterial(f0.floor), r.x0, 0, r.z0, r.x1, 0.02, r.z1, 1.6)
-  const ceiling = acres.ceiling()
+  const ceiling = look.lit ? acres.ceilingLit(look.lit) : acres.ceiling()
   for (const s of disjoint(h.slabs ?? [])) {
     const y = h.floors[1].y
     P.aabb(acres.carpet(CARPET[h.id]), s.x0, y - 0.02, s.z0, s.x1, y, s.z1, 1.5)
@@ -288,8 +297,8 @@ function buildHouse(h) {
     P.box(acres.trim('concrete'), (h.x0 + h.x1) / 2, top + 0.55, h.z1 + 1.1, w, 0.16, 2.6, 2, [-0.26, 0, 0])
     for (const x of [h.x0 + 0.4, h.x1 - 0.4]) P.box(acres.steelDark(), x, (top + 0.45) / 2, h.z1 + 2.0, 0.12, top + 0.45, 0.12, 1)
   }
-  // TV aerial on the two family houses.
-  if (h.floors.length > 1) {
+  // TV aerial on the two-storey family houses.
+  if (h.floors.length > 1 && !look.noAerial) {
     const ax = (h.x0 + h.x1) / 2
     const az = h.z0 + 2.2
     const steel = acres.steelDark()
@@ -350,8 +359,9 @@ function buildHouse(h) {
 const boxGeoFor = (size) => boxGeo(size[0], size[1], size[2], 1.4)
 const quat = (q) => new Quaternion(q[0], q[1], q[2], q[3])
 
-export function House({ id }) {
-  const parts = useMemo(() => once(`house:${id}`, () => buildHouse(houseOf(id))), [id])
+/** A house by id; `of` looks it up (Atomic Acres' houses unless another map passes its own). */
+export function House({ id, of = houseOf }) {
+  const parts = useMemo(() => once(`house:${id}`, () => buildHouse(of(id))), [id, of])
   return <Merged parts={parts} />
 }
 

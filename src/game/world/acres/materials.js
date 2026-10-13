@@ -69,10 +69,17 @@ export const SIDING = {
   blue: { color: '#9cc5dc' },
   orange: { color: '#e07a2c', tex: 'panel' },
   barn: { color: '#9a3b2e' },
+  // Hollow Creek's night-time town.
+  ash: { color: '#8a8f94' },
+  dusk: { color: '#5d5a6e' },
+  moss: { color: '#6b7a58' },
+  oat: { color: '#d6cbb0' },
+  plum: { color: '#6a4a62' },
+  tealgrey: { color: '#5f7a7a' },
 }
 export const ROOFS = { slate: '#5d6873', charcoal: '#6b7480', red: '#a2483a', teal: '#3f817b', concrete: '#bdb8ae' }
-export const TRIM = { white: '#f6f4ec', concrete: '#c9c4b8', teal: '#3f817b' }
-export const SHUTTERS = { green: '#2f7d63', white: '#f6f4ec' }
+export const TRIM = { white: '#f6f4ec', concrete: '#c9c4b8', teal: '#3f817b', bone: '#d9d2c2', walnut: '#4a3426' }
+export const SHUTTERS = { green: '#2f7d63', white: '#f6f4ec', black: '#24221f' }
 /** Inside walls per house and floor. */
 export const INTERIOR = {
   yellow: ['#efe2c2', '#d7e6dc'],
@@ -101,6 +108,17 @@ export const acres = {
   },
   interior: (color) => std(`a:interior:${color}`, { map: plasterTexture(), color, roughness: 0.92 }),
   ceiling: () => std('a:ceiling', { map: plasterTexture(), color: '#f3f1ea', roughness: 0.92 }),
+  /**
+   * Inside walls and ceilings of a room with the lamps on at night (Hollow
+   * Creek): a warm glow of their own, `lit` strong, so the room reads (and so
+   * does anyone standing in it) without a single real light. Walls and
+   * ceilings glow the same colour, so with one `lit` for the whole map the
+   * batcher draws every room in town at once.
+   */
+  interiorLit: (color, lit) =>
+    std(`a:interiorLit:${color}:${lit}`, { map: plasterTexture(), color, emissive: '#ffb468', emissiveIntensity: lit, emissiveMap: plasterTexture(), roughness: 0.92 }),
+  ceilingLit: (lit) =>
+    std(`a:ceilingLit:${lit}`, { map: plasterTexture(), color: '#e8e2d4', emissive: '#ffb468', emissiveIntensity: lit, emissiveMap: plasterTexture(), roughness: 0.92 }),
   trim: (name = 'white') => solid(`a:trim:${name}`, TRIM[name] ?? name, 'satin'),
   shutter: (name) => std(`a:shutter:${name}`, { map: sidingTexture(), color: SHUTTERS[name] ?? name, roughness: 0.85 }),
   roof: (name) => std(`a:roof:${name}`, { map: shingleTexture(), color: ROOFS[name] ?? name, roughness: 0.9 }),
@@ -124,6 +142,9 @@ export const acres = {
   bark: () => solid('a:bark', '#5a4632', 'matte'),
   wood: (color = '#8a5f3a') => std(`a:wood:${color}`, { map: woodFloorTexture(), color, roughness: 0.75 }),
   fabric: (color) => std(`a:fabric:${color}`, { map: carpetTexture(), color, roughness: 1 }),
+  /** Curtains lit from behind: a lamp on in the room at night. */
+  /** Curtains with the lamp behind them: one warm glow whatever the cloth, so they all batch together. */
+  glowFabric: (color) => std(`a:glowFabric:${color}`, { map: carpetTexture(), color, emissive: '#eca24a', emissiveIntensity: 0.9, roughness: 1 }),
   paint: (color, roughness = 0.55, metalness = 0.1) => {
     const finish = finishOf(roughness, metalness)
     return solid(`a:paint:${color}:${finish}`, color, finish)

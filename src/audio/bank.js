@@ -963,6 +963,224 @@ const BIG = {
 }
 
 /* ---------------------------------------------------------------------------
+ * Night in Hollow Creek: the church bell, owls, crows, wolves, the wind
+ * ------------------------------------------------------------------------- */
+
+const smooth = (x) => {
+  const u = Math.min(1, Math.max(0, x))
+  return u * u * (3 - 2 * u)
+}
+
+/** A decaying sine at one pitch, cheap (a bell has twenty-odd): the decay is a running product. */
+function partial(o, f, tau, gain, att = 0.002) {
+  const len = Math.min(o.length, Math.ceil(tau * 6 * SR))
+  const w = (2 * Math.PI * f) / SR
+  const k = Math.exp(-1 / (tau * SR))
+  const a = att * SR
+  let env = gain
+  for (let i = 0; i < len; i++) {
+    o[i] += Math.sin(w * i) * env * (i < a ? i / a : 1)
+    env *= k
+  }
+}
+
+/**
+ * A church bell struck once. A bell's partials sit at the hum (an octave
+ * under), the prime, a minor-third tierce, the quint, the nominal (the note you
+ * hear struck) and a few above, each ringing its own length, the low ones
+ * longest; and each is a pair a hair apart, so the note beats slowly as it dies.
+ */
+function churchBell(r) {
+  const o = buf(8)
+  const prime = 165 + r() * 20
+  const partials = [
+    [0.5, 0.55, 4.6],
+    [1, 0.75, 3.4],
+    [1.19, 0.5, 2.5],
+    [1.5, 0.25, 1.9],
+    [2, 0.6, 2.1],
+    [2.5, 0.22, 1.3],
+    [2.66, 0.18, 1.1],
+    [3.01, 0.2, 0.85],
+    [4.07, 0.13, 0.55],
+    [5.32, 0.08, 0.35],
+    [6.1, 0.05, 0.25],
+  ]
+  for (const [ratio, gain, tau] of partials) {
+    const f = prime * ratio * (0.998 + r() * 0.004)
+    partial(o, f, tau, gain)
+    partial(o, f + 0.4 + r() * 1.1, tau * 0.9, gain * 0.45)
+  }
+  // The clapper: a dull clank on top of the ring.
+  noiseLayer(o, r, { dur: 0.08, tau: 0.012, att: 0.0003, type: 'bandpass', freq: 1800, q: 1.2, gain: 0.9 })
+  noiseLayer(o, r, { dur: 0.15, tau: 0.03, att: 0.0005, freq: 600, gain: 0.5 })
+  // Round the inside of the belfry.
+  reflections(o, [
+    { delay: 0.11, gain: 0.25, cutoff: 2200 },
+    { delay: 0.29, gain: 0.18, cutoff: 1400 },
+  ])
+  return finish(o, { level: 0.9, fadeOut: 0.6 })
+}
+
+/** One soft owl hoot: a falling near-sine with a little breath in it. */
+function hoot(o, r, start, dur, f, gain) {
+  const n0 = Math.floor(start * SR)
+  const len = Math.floor(dur * SR)
+  const breath = new Biquad('bandpass', f, 6)
+  let ph = 0
+  for (let i = 0; i < len && n0 + i < o.length; i++) {
+    const u = i / len
+    ph += (2 * Math.PI * f * (1.04 - 0.08 * u)) / SR
+    const env = smooth(u / 0.25) * (1 - smooth((u - 0.55) / 0.45))
+    o[n0 + i] += (Math.sin(ph) + 0.12 * Math.sin(2 * ph) + breath.run(r() * 2 - 1) * 0.6) * env * gain
+  }
+}
+
+/** A great horned owl: hoo, h-hoo, hooo, hooo. */
+function owl(r) {
+  const o = buf(2.4)
+  const f0 = 300 + r() * 70
+  for (const [start, dur, gain] of [
+    [0, 0.24, 1],
+    [0.38, 0.11, 0.8],
+    [0.52, 0.16, 0.9],
+    [1.0, 0.36, 1],
+    [1.55, 0.42, 0.95],
+  ]) {
+    hoot(o, r, start, dur, f0 * (0.97 + r() * 0.05), gain)
+  }
+  reflections(o, [{ delay: 0.17, gain: 0.2, cutoff: 900 }])
+  return finish(o, { level: 0.8, fadeOut: 0.1 })
+}
+
+/** One caw: a rasping sawtooth sliding down, through a crow's two formants. */
+function caw(o, r, start, dur, f0) {
+  const n0 = Math.floor(start * SR)
+  const len = Math.floor(dur * SR)
+  const f1 = new Biquad('bandpass', 1300, 2)
+  const f2 = new Biquad('bandpass', 2600, 3)
+  let ph = 0
+  for (let i = 0; i < len && n0 + i < o.length; i++) {
+    const t = i / SR
+    const u = i / len
+    ph += (f0 * (1.08 - 0.22 * u)) / SR
+    ph -= Math.floor(ph)
+    const x = (2 * ph - 1) * (1 + 0.6 * Math.sin(2 * Math.PI * 75 * t) + 0.3 * (r() * 2 - 1))
+    const env = Math.min(1, t / 0.012) * (1 - smooth((u - 0.55) / 0.45))
+    o[n0 + i] += (f1.run(x) * 1.4 + f2.run(x) * 0.8) * env
+  }
+}
+
+/** A crow in the dead trees: two or three caws. */
+function crow(r) {
+  const o = buf(1.8)
+  const n = 2 + Math.floor(r() * 2)
+  const f0 = 480 + r() * 120
+  let t = 0
+  for (let k = 0; k < n; k++) {
+    caw(o, r, t, 0.2 + r() * 0.08, f0 * (0.95 + r() * 0.1))
+    t += 0.34 + r() * 0.12
+  }
+  reflections(o, [{ delay: 0.12, gain: 0.2, cutoff: 1800 }])
+  return finish(o, { drive: 1.6, level: 0.75, fadeOut: 0.1 })
+}
+
+/**
+ * One wolf's howl: up from the chest to a long held note with a slow vibrato,
+ * then falling away; a few harmonics, voweled by a formant.
+ */
+function howl(o, r, start, dur, f0, gain) {
+  const n0 = Math.floor(start * SR)
+  const len = Math.floor(dur * SR)
+  const vowel = new Biquad('bandpass', 900, 1.2)
+  const breath = new Biquad('bandpass', f0 * 2, 3)
+  const vib = 4.5 + r()
+  let ph = 0
+  for (let i = 0; i < len && n0 + i < o.length; i++) {
+    const t = i / SR
+    const u = i / len
+    const k = u < 0.22 ? 1 + 0.75 * smooth(u / 0.22) : u < 0.75 ? 1.75 - (0.08 * (u - 0.22)) / 0.53 : 1.67 - 0.42 * smooth((u - 0.75) / 0.25)
+    ph += (2 * Math.PI * f0 * k * (1 + 0.012 * Math.sin(2 * Math.PI * vib * t) * Math.min(1, t / 0.6))) / SR
+    const s = Math.sin(ph) + 0.45 * Math.sin(2 * ph) + 0.2 * Math.sin(3 * ph) + 0.1 * Math.sin(4 * ph)
+    const env = smooth(u / 0.12) * (1 - smooth((u - 0.7) / 0.3))
+    o[n0 + i] += (s * 0.7 + vowel.run(s) * 0.6 + breath.run(r() * 2 - 1) * 0.08) * env * gain
+  }
+}
+
+/** Wolves far off in the hills: one howl, often a second joining in higher, echoing round the valley. */
+function wolfHowl(r) {
+  const o = buf(5)
+  howl(o, r, 0, 3.8, 270 + r() * 40, 1)
+  if (r() < 0.6) howl(o, r, 1.0 + r() * 0.6, 3.2, 360 + r() * 50, 0.55)
+  reflections(o, [
+    { delay: 0.32, gain: 0.35, cutoff: 1100 },
+    { delay: 0.75, gain: 0.22, cutoff: 800 },
+    { delay: 1.3, gain: 0.12, cutoff: 600 },
+  ])
+  return finish(o, { level: 0.85, fadeOut: 0.4 })
+}
+
+/** Ends a loop on its own start: the overrun (`fade` s past `len`) crossfaded over the head. */
+function loopify(ch, len, fade) {
+  const n = Math.floor(len * SR)
+  const f = Math.floor(fade * SR)
+  const out = ch.slice(0, n)
+  for (let i = 0; i < f; i++) {
+    const w = i / f
+    out[i] = ch[i] * Math.sqrt(w) + ch[n + i] * Math.sqrt(1 - w)
+  }
+  return out
+}
+
+/**
+ * The night itself, looped under everything: wind in the pines swelling and
+ * dropping (gusts that repeat with the loop, so it never jumps), a faint
+ * whistle through the branches, and crickets, each channel its own.
+ */
+function nightBed(r) {
+  const LEN = 10
+  const FADE = 0.8
+  const pair = [buf(LEN + FADE), buf(LEN + FADE)]
+  for (const ch of pair) {
+    const lp1 = new Biquad('lowpass', 400, 0.7)
+    const lp2 = new Biquad('lowpass', 400, 0.7)
+    const whistle = new Biquad('bandpass', 700, 8)
+    const p1 = r() * Math.PI * 2
+    const p2 = r() * Math.PI * 2
+    let gust = 0
+    for (let i = 0; i < ch.length; i++) {
+      const t = i / SR
+      if (i % 64 === 0) {
+        gust = 0.55 + 0.3 * Math.sin((2 * Math.PI * t) / LEN + p1) + 0.15 * Math.sin((6 * Math.PI * t) / LEN + p2)
+        const fc = 260 + 420 * gust
+        lp1.set(fc)
+        lp2.set(fc)
+        whistle.set(620 + 260 * gust, 8)
+      }
+      const n = r() * 2 - 1
+      ch[i] = lp2.run(lp1.run(n)) * gust + whistle.run(n) * 0.06 * gust * gust
+    }
+    // Two crickets a channel, chirping three or four quick pulses at their own pace.
+    for (let k = 0; k < 2; k++) {
+      const f = 4300 + r() * 600
+      const every = 0.55 + r() * 0.4
+      const gain = 0.02 + r() * 0.01
+      for (let t0 = r() * every; t0 < LEN + FADE - 0.2; t0 += every * (0.92 + r() * 0.16)) {
+        const pulses = 3 + Math.floor(r() * 2)
+        for (let p = 0; p < pulses; p++) toneLayer(ch, { start: t0 + p * 0.028, dur: 0.02, tau: 0.008, att: 0.003, from: f, gain })
+      }
+    }
+  }
+  return finishStereo(
+    pair.map((ch) => loopify(ch, LEN, FADE)),
+    { level: 0.7, fadeOut: 0 },
+  )
+}
+
+const NIGHT = { churchBell, owl, crow, wolfHowl, nightBed }
+const NIGHT_COUNTS = { churchBell: 2, owl: 3, crow: 3, wolfHowl: 2, nightBed: 1 }
+
+/* ---------------------------------------------------------------------------
  * Hit markers, near misses, gear
  * ------------------------------------------------------------------------- */
 
@@ -1090,6 +1308,8 @@ function recipes() {
     list.push([name, counts[name] ?? 2, (s) => finish(fn(rng(s)), { level: FOLEY_LEVEL[name] ?? 0.85 })])
   }
   for (const [name, fn] of Object.entries(BIG)) list.push([name, name.startsWith('distant') ? 3 : 2, (s) => fn(rng(s))])
+  // Last: only Hollow Creek's night uses them, and never in its first seconds.
+  for (const [name, fn] of Object.entries(NIGHT)) list.push([name, NIGHT_COUNTS[name], (s) => fn(rng(s))])
   return list
 }
 

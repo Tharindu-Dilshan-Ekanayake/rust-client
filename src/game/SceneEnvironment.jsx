@@ -42,6 +42,7 @@ function skyMaterial(env, { forEnvironment = false } = {}) {
           sunDir: { value: env.sunDir.clone() },
           storm: { value: sky.storm },
           below: { value: new Color().setRGB(...sky.below) },
+          night: { value: sky.night ?? 0 },
         },
         vertexShader: /* glsl */ `
           varying vec3 vDir;
@@ -63,20 +64,50 @@ function skyMaterial(env, { forEnvironment = false } = {}) {
           uniform vec3 sunDir;
           uniform float storm;
           uniform vec3 below;
+          uniform float night;
           varying vec3 vDir;
+          float hash3(vec3 p) {
+            return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          }
           void main() {
             vec3 d = normalize(vDir);
             float h = max(d.y, 0.0);
             vec3 col = mix(horizon, mid, smoothstep(0.0, 0.12, h));
             col = mix(col, zenith, smoothstep(0.1, 0.75, h));
-            float s = max(dot(d, normalize(sunDir)), 0.0);
-            col += sunColor * (pow(s, 4.0) * 0.22 + pow(s, 48.0) * 0.4);
+            vec3 sd = normalize(sunDir);
+            float s = max(dot(d, sd), 0.0);
+            col += sunColor * (pow(s, 4.0) * 0.22 + pow(s, 48.0) * 0.4) * (1.0 - night * 0.55);
+            if (night > 0.5) {
+              // Stars: a sparse scatter of points, fading towards the horizon.
+              vec3 sp = d * 260.0;
+              vec3 cell = floor(sp);
+              float r = hash3(cell);
+              vec3 off = vec3(hash3(cell + 1.7), hash3(cell + 3.1), hash3(cell + 5.3)) * 0.6 + 0.2;
+              float star = step(0.987, r) * smoothstep(0.35, 0.0, length(fract(sp) - off));
+              col += vec3(0.82, 0.88, 1.0) * star * (0.5 + 0.9 * fract(r * 91.7)) * smoothstep(0.05, 0.35, h);
+              // Thin cloud, a layer overhead seen in perspective, silvered near the moon.
+              vec2 cp = d.xz / (d.y + 0.25) * 1.4;
+              float wisp = sin(cp.x * 1.7 + 1.0 + sin(cp.y * 1.3) * 0.8) * sin(cp.y * 2.1 - 0.4 + sin(cp.x * 0.9) * 0.6) * 0.5 + 0.5;
+              wisp = smoothstep(0.6, 0.95, wisp + 0.15 * sin(cp.x * 5.3 - cp.y * 4.1)) * smoothstep(0.04, 0.35, h);
+              col = mix(col, vec3(0.16, 0.18, 0.27) + sunColor * pow(s, 24.0) * 0.5, wisp * 0.55);
+              // The moon: a big pale disc with dark seas and a soft halo.
+              float md = acos(clamp(dot(d, sd), -1.0, 1.0));
+              float R = 0.075;
+              vec3 tx = normalize(cross(sd, vec3(0.0, 1.0, 0.0)));
+              vec3 ty = cross(tx, sd);
+              vec2 mu = vec2(dot(d - sd, tx), dot(d - sd, ty)) / R;
+              float seas = sin(mu.x * 3.1 + 1.3) * sin(mu.y * 2.7 - 0.6) + 0.55 * sin(mu.x * 6.3 - mu.y * 5.1 + 2.0) + 0.3 * sin(mu.y * 9.7 + mu.x * 1.3);
+              float limb = sqrt(max(0.0, 1.0 - dot(mu, mu)));
+              vec3 moon = vec3(1.32, 1.3, 1.2) * (0.78 + 0.22 * limb) * (1.0 - smoothstep(0.35, 0.95, seas) * 0.28);
+              col = mix(col, moon, (1.0 - smoothstep(R * 0.96, R, md)) * (1.0 - wisp * 0.35));
+              col += sunColor * exp(-md * 16.0) * 0.16;
+            }
             // Dark storm banks rolling across the upper sky.
             float bank = sin(d.x * 7.0 + d.z * 3.0) * sin(d.z * 5.0 - d.x * 2.0);
             col *= 1.0 - storm * smoothstep(0.15, 0.6, h) * (0.1 + 0.08 * bank);
             // Dust banding low on the horizon.
             col = mix(col, horizon * 1.04, smoothstep(0.18, 0.0, h) * (0.15 + 0.2 * storm));
-            col += sunColor * smoothstep(0.9993, 0.99965, s) * 2.0;
+            col += sunColor * smoothstep(0.9993, 0.99965, s) * 2.0 * (1.0 - night);
             #ifdef FOR_ENV
               // For reflections, the lower hemisphere is warm sand, not sky.
               col = mix(below, col, smoothstep(-0.08, 0.02, d.y));

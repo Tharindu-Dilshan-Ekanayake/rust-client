@@ -1,9 +1,10 @@
 import { useGameStore } from '../../store/gameStore.js'
 import * as acres from './acres/textures.js'
+import * as hollow from './hollow/textures.js'
 import * as palmwood from './palmwood/textures.js'
 import * as dustline from './textures.js'
 
-const SETS = { acres, dustline, palmwood }
+const SETS = { acres, dustline, hollow, palmwood }
 let started = false
 
 /**

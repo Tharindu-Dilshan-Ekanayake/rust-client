@@ -29,6 +29,12 @@ let musicSource = null
 let musicVolume = 0.3
 let musicMode = 'menu'
 let ambienceTimer = 0
+/** The map's own ambience (game/ambience.js), or null for the distant battle. */
+let ambience = null
+/** The looping bed under a map's ambience: { src, gain } while it plays. */
+let bed = null
+let bedTimer = 0
+let bellTimer = 0
 
 /** Generated outdoor impulse response: a few hard early reflections, then a dusty tail. */
 function outdoorIR(c) {
@@ -610,6 +616,8 @@ function reverbFor(name) {
   if (name === 'bulletCrack') return 0.12
   if (name === 'suppressed') return 0.12
   if (/explosion|flashbang|distant/.test(name)) return 0.45
+  // The night out in the woods: mostly echo.
+  if (/^(churchBell|owl|crow|wolfHowl)$/.test(name)) return 0.35
   if (/footstep|breath|gasp|heartbeat/.test(name)) return 0.02
   return 0.06
 }
@@ -661,20 +669,113 @@ export function setMusicVolume(v) {
   if (musicGain) musicGain.gain.setTargetAtTime(musicTarget(), ctx.currentTime, 0.3)
 }
 
-/** 'menu' (full) or 'match' (ducked, plus distant battle ambience). */
+/** 'menu' (full) or 'match' (ducked, plus the map's ambience). */
 export function setMusicMode(mode) {
   if (mode === musicMode) return
   musicMode = mode
   if (musicGain) musicGain.gain.setTargetAtTime(musicTarget(), ctx.currentTime, 1.5)
-  clearTimeout(ambienceTimer)
-  if (mode === 'match') scheduleAmbience()
+  restartAmbience()
 }
 
-/** Artillery and gunfire somewhere beyond the walls, every so often. */
+/** The map's ambience (game/ambience.js ambienceFor), or null for the distant battle. */
+export function setAmbience(a) {
+  if (a === ambience) return
+  ambience = a
+  restartAmbience()
+}
+
+function restartAmbience() {
+  clearTimeout(ambienceTimer)
+  clearTimeout(bellTimer)
+  stopBed()
+  if (musicMode !== 'match') return
+  scheduleAmbience()
+  if (ambience?.bed) startBed(ambience)
+  if (ambience?.bell) scheduleBell(ambience, ambience.bell.first ?? 5)
+}
+
+/** A one-off ambient sound at `pos`, carried as far as it likes (`ref` sets how loud it stays). */
+function playAmbient(name, pos, { volume = 1, ref = 8, rolloff = 1, rate, variant } = {}, when = 0) {
+  const variants = bank?.get(name)
+  if (!variants) return
+  const out = output({ pos, volume, ref, rolloff, maxDistance: 400 }, reverbFor(name))
+  if (!out) return
+  const src = ctx.createBufferSource()
+  src.buffer = variants[variant ?? Math.floor(Math.random() * variants.length)]
+  src.playbackRate.value = rate ?? 0.94 + Math.random() * 0.12
+  src.connect(out)
+  src.start(ctx.currentTime + when + Math.min(0.4, out.dist / 343))
+}
+
+/** One of the map's calls (an owl, a crow, a wolf), from a random bearing round the middle of the map. */
+function playCall(a) {
+  const total = a.calls.reduce((s, c) => s + c.weight, 0)
+  let pick = Math.random() * total
+  const call = a.calls.find((c) => (pick -= c.weight) < 0) ?? a.calls[0]
+  const bearing = Math.random() * Math.PI * 2
+  const r = call.radius[0] + Math.random() * (call.radius[1] - call.radius[0])
+  playAmbient(call.sound, [Math.cos(bearing) * r, call.height, Math.sin(bearing) * r], { volume: call.volume, ref: call.ref })
+}
+
+/** The bell tolling from its tower: a few strikes of the same bell, then quiet for a minute or two. */
+function scheduleBell(a, delay) {
+  bellTimer = setTimeout(() => {
+    if (musicMode !== 'match' || ambience !== a) return
+    const variants = bank?.get('churchBell')
+    if (ctx?.state === 'running' && variants) {
+      const { pos, strikes = 3, gap = 2.6, volume = 1, ref = 16 } = a.bell
+      const variant = Math.floor(Math.random() * variants.length)
+      for (let k = 0; k < strikes; k++) playAmbient('churchBell', pos, { volume, ref, rolloff: 0.7, rate: 1, variant }, k * gap)
+    }
+    const [lo, hi] = a.bell.every
+    scheduleBell(a, lo + Math.random() * (hi - lo))
+  }, delay * 1000)
+}
+
+/** The looped bed (wind, crickets) faded in under everything; waits for the bank if it isn't rendered yet. */
+function startBed(a) {
+  if (musicMode !== 'match' || ambience !== a || bed) return
+  const variants = bank?.get(a.bed)
+  if (ctx?.state !== 'running' || !variants) {
+    bedTimer = setTimeout(() => startBed(a), 1000)
+    return
+  }
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+  gain.gain.setTargetAtTime(a.bedVolume ?? 0.2, ctx.currentTime, 1.2)
+  gain.connect(sfxBus)
+  const src = ctx.createBufferSource()
+  src.buffer = variants[0]
+  src.loop = true
+  src.connect(gain)
+  src.start()
+  bed = { src, gain }
+}
+
+function stopBed() {
+  clearTimeout(bedTimer)
+  if (!bed) return
+  const { src, gain } = bed
+  bed = null
+  gain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.4)
+  setTimeout(() => {
+    try {
+      src.stop()
+    } catch {
+      // already stopped
+    }
+    gain.disconnect()
+  }, 2500)
+}
+
+/** Every so often: the map's calls, or artillery and gunfire somewhere beyond the walls. */
 function scheduleAmbience() {
+  const a = ambience
+  const wait = a?.calls ? (a.every[0] + Math.random() * (a.every[1] - a.every[0])) * 1000 : 7000 + Math.random() * 12000
   ambienceTimer = setTimeout(() => {
     if (musicMode !== 'match') return
-    if (ctx?.state === 'running' && bank) {
+    if (ctx?.state === 'running' && bank && a?.calls) playCall(a)
+    else if (ctx?.state === 'running' && bank) {
       const artillery = Math.random() < 0.45
       const variants = bank.get(artillery ? 'distantArtillery' : 'distantBurst')
       const pan = ctx.createStereoPanner()
@@ -690,7 +791,7 @@ function scheduleAmbience() {
       src.start()
     }
     scheduleAmbience()
-  }, 7000 + Math.random() * 12000)
+  }, wait)
 }
 
 /** The flashbang ear-ring: a ~3 kHz tone that fades over `seconds`. */
@@ -726,12 +827,13 @@ export function ring(seconds, strength = 1) {
   ringing = osc
 }
 
-export const sfx = { audioStatus: () => audioStatus(), play, playSequence, ring, unlockAudio, setVolume, setMusicVolume, setMusicMode, setListener, setListenerPosition }
+export const sfx = { audioStatus: () => audioStatus(), play, playSequence, ring, unlockAudio, setVolume, setMusicVolume, setMusicMode, setAmbience, setListener, setListenerPosition }
 
 /** Debug/test hook: what's been rendered so far. */
 export const audioStatus = () => ({
   running: ctx?.state === 'running',
   bankSounds: bank ? bank.size : 0,
+  ambience: { mode: musicMode, bed: Boolean(bed), night: ['churchBell', 'owl', 'crow', 'wolfHowl', 'nightBed'].filter((n) => bank?.has(n)) },
   music: Boolean(musicBuffer),
   musicSeconds: musicBuffer ? +musicBuffer.duration.toFixed(1) : 0,
   levels: Object.fromEntries(

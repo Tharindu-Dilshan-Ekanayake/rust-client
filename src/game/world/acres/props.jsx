@@ -759,19 +759,58 @@ function furniturePiece(P, kind, [w, h, d]) {
       for (const sx of [-1, 1]) P.box(wood, sx * (w / 2 - 0.06), h / 2, 0, 0.06, h, d, 1)
       return
     }
+    case 'pew': {
+      // Seat, a tall back along the far (north) edge, ends.
+      const dark = acres.wood('#4a2e1c')
+      P.box(dark, 0, 0.45, 0.06, w, 0.06, d - 0.12, 1)
+      P.box(dark, 0, (h + 0.45) / 2 + 0.02, -d / 2 + 0.04, w, h - 0.45, 0.06, 1)
+      for (const sx of [-1, 1]) P.box(dark, sx * (w / 2 - 0.04), h / 2, 0, 0.08, h, d, 1)
+      return
+    }
+    case 'altar': {
+      P.box(acres.stone(), 0, (h - 0.06) / 2, 0, w, h - 0.06, d, 1)
+      P.box(acres.fabric('#5a1a24'), 0, h - 0.03, 0, w + 0.06, 0.06, d + 0.06, 1)
+      P.box(acres.fabric('#5a1a24'), 0, h * 0.6, d / 2 + 0.04, w * 0.5, h * 0.8, 0.02, 1)
+      return
+    }
+    case 'bales': {
+      // Square hay bales stacked into the footprint.
+      const straw = acres.wood('#c8a65a')
+      const bw = 1.0
+      const bh = 0.46
+      const nx = Math.max(1, Math.round(w / bw))
+      const nz = Math.max(1, Math.round(d / 0.55))
+      const ny = Math.max(1, Math.round(h / bh))
+      for (let y = 0; y < ny; y++) {
+        for (let i = 0; i < nx; i++) {
+          for (let k = 0; k < nz; k++) {
+            const jitter = ((i * 7 + k * 3 + y * 5) % 5) * 0.012
+            P.box(straw, -w / 2 + (w / nx) * (i + 0.5) + jitter, (h / ny) * (y + 0.5), -d / 2 + (d / nz) * (k + 0.5), w / nx - 0.04, h / ny - 0.02, d / nz - 0.04, 0.8)
+          }
+        }
+      }
+      return
+    }
+    case 'crates': {
+      const crate = acres.wood('#8a6a44')
+      P.box(crate, 0, h / 2, 0, w, h, d, 1)
+      for (const sy of [0.08, h - 0.08]) P.box(acres.wood('#5a4028'), 0, sy, 0, w + 0.02, 0.08, d + 0.02, 1)
+      return
+    }
     default:
       P.box(wood, 0, h / 2, 0, w, h, d, 1)
   }
 }
 
-export function Furniture() {
-  const parts = useMemo(() => once('acres:furniture', () => {
+/** All of a map's furniture in one merged set (Atomic Acres' unless `list` is given). */
+export function Furniture({ list = FURNITURE, cacheKey = 'acres:furniture' }) {
+  const parts = useMemo(() => once(cacheKey, () => {
     const P = new Pieces()
-    for (const f of FURNITURE) {
+    for (const f of list) {
       // Each piece is built round its own origin, placed by the frame.
       P.withFrame(f.p, f.rotY, () => furniturePiece(P, f.kind, f.size))
     }
     return P.build()
-  }), [])
+  }), [list, cacheKey])
   return <Merged parts={parts} />
 }

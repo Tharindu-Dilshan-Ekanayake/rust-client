@@ -11,7 +11,9 @@ export const STORM_WIND = [7.2, 0, 3.2]
  * Sky, light and colour per map (see SceneEnvironment). Dustline is a sunset in
  * a sandstorm; Atomic Acres a bright, slightly hazy desert afternoon with clean
  * colours and long views to the mountains; Palmwood a hot tropical morning,
- * high sun, blue sky and saturated greens.
+ * high sun, blue sky and saturated greens; Hollow Creek Halloween night: the
+ * moon (the "sun" here) high over the church, cold blue light and long
+ * shadows, the warm glow of the town's lamps and pumpkins coming from below.
  */
 export const ENVIRONMENTS = {
   dustline: {
@@ -87,6 +89,36 @@ export const ENVIRONMENTS = {
       dust: [0.4, 0.44, 0.42],
       lift: 0.02,
     },
+  },
+}
+
+ENVIRONMENTS.hollow = {
+  sunDir: new Vector3(0.3, 0.62, -0.72).normalize(),
+  fog: '#1b2036',
+  fogNear: 24,
+  fogFar: 155,
+  sky: { horizon: '#2a3050', mid: '#182042', zenith: '#060a1c', sun: '#dfe6ff', storm: 0, below: [0.05, 0.06, 0.09], night: 1 },
+  hemi: ['#8291cc', '#2a2430', 0.9],
+  // Warm from low on the far side: the lamps, the pumpkins and the fires.
+  bounce: ['#ff9a52', 0.34],
+  ambient: ['#4c527a', 0.44],
+  sun: ['#c6d2ff', 1.6],
+  envIntensity: 0.5,
+  storm: false,
+  shadowSpan: 60,
+  menuCam: { radius: 48, height: 17, look: [0, 4, -3] },
+  vm: { ambient: ['#50587c', 0.5], hemi: ['#a6b2e6', '#2c2632', 0.66], sun: ['#c8d4ff', 0.95] },
+  grade: {
+    exposure: 1.1,
+    contrast: 1.08,
+    saturation: 0.95,
+    shadowTint: [-0.008, -0.002, 0.03],
+    highlightTint: [0.035, 0.014, -0.02],
+    vignette: 0.42,
+    bleach: 0.04,
+    grain: 0.03,
+    dust: [0.06, 0.07, 0.14],
+    lift: 0.035,
   },
 }
 
