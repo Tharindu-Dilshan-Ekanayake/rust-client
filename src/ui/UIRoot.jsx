@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { sfx } from '../audio/sfx.js'
+import { ambienceFor } from '../game/ambience.js'
 import { IS_TOUCH, isLocked, releaseLock, requestLock } from '../game/player/input.js'
 import { useGameStore } from '../store/gameStore.js'
 import { ClassEditorScreen } from './ClassEditor.jsx'
@@ -104,6 +105,7 @@ export function UIRoot() {
   const { scale, portrait } = useViewport()
   const volume = useGameStore((s) => s.settings.volume)
   const musicVolume = useGameStore((s) => s.settings.musicVolume)
+  const roomMap = useGameStore((s) => s.roomMap)
   useGlobalKeys()
 
   useEffect(() => {
@@ -112,8 +114,12 @@ export function UIRoot() {
   useEffect(() => {
     sfx.setMusicVolume(musicVolume ?? 0.3)
   }, [musicVolume])
+  // What the map sounds like in a match: the distant battle, or its own night.
+  useEffect(() => {
+    sfx.setAmbience(ambienceFor(roomMap))
+  }, [roomMap])
   // Score at full level in the menus, tucked under the action in a match (where
-  // distant artillery and gunfire take over).
+  // the map's ambience takes over).
   useEffect(() => {
     sfx.setMusicMode(gameState === 'playing' || gameState === 'dead' ? 'match' : 'menu')
   }, [gameState])

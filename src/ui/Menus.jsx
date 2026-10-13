@@ -48,6 +48,15 @@ const MAP_TIPS = {
     ['The market stalls', ' have counters to shoot over.'],
     ['Banana leaves hide you,', ' but they won’t stop a bullet.'],
   ],
+  hollow: [
+    ['Climb the burning watchtower', ' by the creek to see over the barn and the park. The ladder is the only way up.'],
+    ['The barn has a hayloft.', ' The stairs run up the inside of its east wall.'],
+    ['Step out onto the carport roof', ' (west house) or the garage roof (east house) from the upstairs doors.'],
+    ['The church is open', ' — doors front and back, and a side door to the churchyard. The pews are low cover.'],
+    ['Iron railings and picket fences', ' stop you, not bullets.'],
+    ['The garden sheds', ' next to the two big houses have ammo crates that refill everything.'],
+    ['The witch on the roundabout', ' is solid cover right in the middle of town.'],
+  ],
 }
 const tipsFor = (mapId) => [...COMMON_TIPS, ...(MAP_TIPS[mapId] ?? [])]
 
@@ -190,7 +199,7 @@ export function MainMenu() {
               setMenuScreen('mode')
             }}
           >
-            Play <small>TDM · FFA · up to {MAX_PLAYERS} players</small>
+            Play <small>TDM · S&amp;D · FFA · up to {MAX_PLAYERS} players</small>
           </Button>
           <Button onClick={() => setMenuScreen('classes')}>
             Classes <small>Create-a-class</small>

@@ -2,7 +2,7 @@
 
 **Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
 with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch,
-Free-for-all or [Search & Destroy](#search--destroy), on three maps (picked on
+Free-for-all or [Search & Destroy](#search--destroy), on four maps (picked on
 the *Find a match* screen, see [Maps](#maps)).
 
 *Atomic Acres* (84 × 84 m, the default) is a 1950s test-site suburb. A school
@@ -47,14 +47,37 @@ the screen; suppressed shots are quiet and never show on enemy minimaps.
 ## Maps
 
 Each map is data in `shared/` (`map.js` for Dustline, `mapAcres.js` for
-Atomic Acres, `mapPalmwood.js` for Palmwood, helpers in `mapKit.js`), listed
-in `shared/maps.js`: its colliders, ladders, spawns, resupply crates, bot
-navigation hints and bounds. The client draws the map on screen
-(`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/` or
-`world/palmwood/`) with that map's sky and light (`game/environment.js`); the
-minimap, ladders, effects and menu camera all follow the active map.
+Atomic Acres, `mapPalmwood.js` for Palmwood, `mapHollow.js` for Hollow Creek,
+helpers in `mapKit.js`), listed in `shared/maps.js`: its colliders, ladders,
+spawns, resupply crates, bot navigation hints and bounds. The client draws the
+map on screen (`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/`,
+`world/palmwood/` or `world/hollow/`) with that map's sky and light
+(`game/environment.js`) and sound (`game/ambience.js`); the minimap, ladders,
+effects and menu camera all follow the active map.
 
-- **Palmwood** (76 × 76 m, the newest): a tropical plywood shanty town. A rutted
+- **Hollow Creek** (80 × 80 m, the newest): a small town on Halloween night,
+  under a full moon. A witch statue with a carved pumpkin for a head stirs a
+  glowing cauldron on the roundabout in the middle; north of it the stone
+  church (doors front, back and side; pews inside) with its bell tower and the
+  graveyard behind iron railings, headstones and a crypt. South, a creek runs
+  across the town under a footbridge and the lanes' culverts, past the red barn
+  (a hayloft up the stairs inside its east wall; a hay pile burning by its
+  door) and the old watchtower burning at the top (a ladder up to its deck).
+  Alpha spawns behind the west house and the west cottage, Bravo behind the
+  east ones; the two big houses are Atomic Acres' (upstairs, carport and garage
+  roofs), repainted. Pumpkins, lanterns, string lights, scarecrows, hay, dead
+  trees, mist and bats; the garden sheds have ammo crates. No team spawn can
+  see the other's, and every spawn faces an open view, not a wall.
+  - Night without lights: the lamps, windows, candles, carved faces, the
+    cauldron and the fires are emissive (over-bright, tone-mapped into a glow),
+    with one instanced draw of soft halos round them, additive pools of light
+    on the ground, and lit interiors that glow on their own. The sky has stars,
+    thin moonlit cloud and the moon (`night` in the sky shader).
+  - Sound: wind in the pines and crickets under everything, the church bell
+    tolling from its tower now and then, and owls, crows and far-off wolves out
+    in the woods, each from its own direction (see [Sound](#sound)).
+
+- **Palmwood** (76 × 76 m): a tropical plywood shanty town. A rutted
   dirt loop runs round the Frame, an unfinished two-storey block whose open top
   floor (safety mesh on the bays, no roof yet) is reached by stairs up its east
   and west sides, and a deck under camo netting. Round the loop: the long house
@@ -69,7 +92,9 @@ minimap, ladders, effects and menu camera all follow the active map.
 - Atomic Acres houses (`HOUSES` in `mapAcres.js`) and Palmwood's buildings
   (`BUILDINGS` in `mapPalmwood.js`) are each built from one description: the
   same wall pieces make the colliders and the art, so every door, window,
-  stairwell and roof lines up.
+  stairwell and roof lines up. Hollow Creek's houses, church, barn, cottages
+  and sheds use Atomic Acres' description (and its `House`, with a `look`
+  for siding, stone, lit rooms and glowing curtains).
 - Names and signage are original (no other game's trademarks); Atomic Acres'
   layout follows the classic suburban cul-de-sac.
 
@@ -243,8 +268,15 @@ kills and headshot kills have their own dry markers; aiming in rattles your
 gear, and the last quarter of a mag pings hollow under each shot. Everything shares a generated outdoor
 reverb, and distant sounds arrive late (speed of sound) and muffled.
 `audio/music.js` renders a 48 s war score loop offline; it plays full in the
-menus and tucked low under a match, where distant battle ambience takes over.
-Settings has separate master and music volume.
+menus and tucked low under a match, where the map's ambience takes over
+(`game/ambience.js`): distant artillery and bursts beyond the walls, or on
+Hollow Creek a Halloween night, rendered into the same bank: a looped bed of
+wind in the pines and crickets (its gusts repeat with the loop, so the seam
+never shows), a church bell (a bell's partials, hum to upper octave, each
+ringing its own length and beating slowly) tolling three times from the
+belfry a few seconds into a match and every minute or two after, and owls,
+crows and wolves calling from random bearings round the town, positional like
+any other sound. Settings has separate master and music volume.
 
 ## Netcode and look
 
@@ -297,7 +329,8 @@ Built to run smoothly on low-end PCs without hitches:
   neighbourhood on edges.
 - Two flash point lights shared by every muzzle flash and blast, and no lamp
   lights in the maps: every point light costs every lit pixel, flashing or not.
-  Both maps keep the same light count.
+  Every map keeps the same light count (Hollow Creek's night is all emissive
+  glow and halos, see [Maps](#maps)).
 - A full match (7 other players) is ~130–160 draw calls on High, down from ~580:
   - The map is merged per material, with the whole arena as one cell (only the
     outskirts are split up for culling). Materials that differ only in colour
@@ -353,6 +386,12 @@ Built to run smoothly on low-end PCs without hitches:
   grass tufts, bushes) is a bent strip in one foliage atlas, so all the foliage
   is one material; plywood, tin and tarps batch whatever their tint; the loop is
   one strip whose texture follows the curve, so the wheel ruts do too.
+- **Hollow Creek** draws in ~55 calls for the whole town. Rooms, ceilings
+  and curtains glow the same colour in every house, so all the rooms are one
+  draw and all the curtains another; the string-light bulbs (hundreds) are 20-face specks with the
+  halo doing the rest; mist sheets fade out before they reach the camera (a
+  bank right in front of it filled the screen for nothing) and there are half
+  as many on Low.
 - No z-fighting: ground layers sit centimetres apart with depth offsets
   (`acres.layer`), signs are offset from their boards, overlapping floors and
   slabs are cut apart before drawing, and the camera's near plane is 10 cm.
@@ -370,6 +409,14 @@ Measured (Playwright, online match with 7 bots, 1080p, uncapped):
 | Dustline, High | 78 FPS | 221 FPS |
 | Palmwood, Low | 135 FPS | 346 FPS |
 | Palmwood, High | 112 FPS | 292 FPS |
+
+Hollow Creek was measured on a later day, when the same laptop ran everything
+slower; Atomic Acres the same day, for scale:
+
+| | Radeon 780M (integrated) | RTX 5050 Laptop |
+|---|---|---|
+| Hollow Creek, Low | ~67 FPS (Acres 80) | 127 FPS (Acres 130) |
+| Hollow Creek, High | 64 FPS | 112 FPS |
 
 The longest frame in a 12 s fight went from 280–450 ms (shader first use) to
 under 50 ms on the 780M and under 17 ms on the RTX. Earlier: High went from ~51
