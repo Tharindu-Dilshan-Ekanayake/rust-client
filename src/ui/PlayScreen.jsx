@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 
 import { net, normalizeRoomCode } from '../net/network.js'
-import { MATCH_RULES, MAX_PLAYERS, MODE_LABELS, MODES, ROOM_CODE_LENGTH } from '../shared/constants.js'
+import { isTeamMode, MATCH_RULES, MAX_PLAYERS, MODE_LABELS, MODES, ROOM_CODE_LENGTH, SND } from '../shared/constants.js'
 import { MAPS } from '../shared/maps.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { useGameStore } from '../store/gameStore.js'
@@ -22,10 +22,44 @@ const MODE_INFO = {
     blurb: 'Everyone is a target. Spawns put you far from the fight — then it finds you.',
     chips: [`${MAX_PLAYERS} PLAYERS`, `${MATCH_RULES.ffa.scoreLimit} KILLS`, `${MATCH_RULES.ffa.timeLimit / 60} MIN`],
   },
+  [MODES.SND]: {
+    blurb: 'One life a round. Attackers plant the bomb on A or B — defenders hold or defuse it.',
+    chips: ['4 V 4', '1 LIFE', `FIRST TO ${SND.roundsToWin}`],
+  },
+}
+
+/** Quick play and private rooms list the modes in this order. */
+const MODE_ORDER = [MODES.TDM, MODES.SND, MODES.FFA]
+/** The private room's mode tiles. */
+const MODE_TILES = {
+  [MODES.TDM]: ['Team DM', 'Alpha vs Bravo'],
+  [MODES.SND]: ['Search & Destroy', 'Plant or defuse'],
+  [MODES.FFA]: ['Free for all', 'Every player alone'],
 }
 
 /** Big faint emblem behind each mode card. */
 function ModeEmblem({ mode }) {
+  if (mode === MODES.SND) {
+    // Sites A and B either side of the bomb.
+    const diamond = (cx, letter) => (
+      <g transform={`translate(${cx} 45)`}>
+        <path d="M0-24L24 0 0 24-24 0z" fill="none" stroke="var(--accent)" strokeWidth="4" />
+        <text y="9" textAnchor="middle" fontSize="26" fontWeight="700" fill="var(--accent)" fontFamily="var(--head)">
+          {letter}
+        </text>
+      </g>
+    )
+    return (
+      <svg className="emblem" viewBox="0 0 160 90" aria-hidden>
+        {diamond(28, 'A')}
+        {diamond(132, 'B')}
+        <g transform="translate(80 47)" fill="var(--bad)">
+          <path d="M-22-8h44v24h-44zM-15-2v12h18v-12zM8 1v5h5v-5z" fillRule="evenodd" />
+          <path d="M-6-8v-6c0-4 3-7 7-7h8v4H1c-2 0-3 1-3 3v6z" />
+        </g>
+      </svg>
+    )
+  }
   if (mode === MODES.TDM) {
     // Two shields squaring up.
     const shield = 'M0 0h52v34c0 22-14 36-26 44C14 70 0 56 0 34z'
@@ -122,7 +156,7 @@ function PrivatePanel() {
   const mapName = useGameStore((s) => MAPS[s.mapChoice]?.name ?? '')
   const ready = code.length === ROOM_CODE_LENGTH
   const join = () => ready && net.joinByCode(code)
-  const sizeLabel = (n) => (mode === MODES.TDM ? `${n / 2}v${n / 2}` : `${n}`)
+  const sizeLabel = (n) => (isTeamMode(mode) ? `${n / 2}v${n / 2}` : `${n}`)
   return (
     <section className="dl-panel dl-private-panel dl-slide-up" style={{ animationDelay: '140ms' }}>
       <div className="dl-section-label">
@@ -153,11 +187,11 @@ function PrivatePanel() {
         <div className="dl-private-body">
           <div className="dl-field">
             <span className="dl-label">Mode</span>
-            <div className="dl-optiles">
-              {[MODES.TDM, MODES.FFA].map((m) => (
+            <div className="dl-optiles three">
+              {MODE_ORDER.map((m) => (
                 <button key={m} type="button" className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
-                  <strong>{m === MODES.TDM ? 'Team deathmatch' : 'Free for all'}</strong>
-                  <small>{m === MODES.TDM ? 'Alpha vs Bravo' : 'Every player for themselves'}</small>
+                  <strong>{MODE_TILES[m][0]}</strong>
+                  <small>{MODE_TILES[m][1]}</small>
                 </button>
               ))}
             </div>
@@ -183,7 +217,7 @@ function PrivatePanel() {
             </span>
           </label>
           <div className="dl-private-summary">
-            {mapName} · {MODE_LABELS[mode]} · {sizeLabel(size)} {mode === MODES.TDM ? '' : 'players'} · {bots ? 'bots on' : 'no bots'}
+            {mapName} · {MODE_LABELS[mode]} · {sizeLabel(size)} {isTeamMode(mode) ? '' : 'players'} · {bots ? 'bots on' : 'no bots'}
           </div>
           <Button className="primary dl-wide" onClick={() => net.createPrivate({ mode, maxPlayers: size, bots })}>
             Create room &amp; get key
@@ -271,7 +305,7 @@ export function ModeSelect() {
             </div>
             <MapPicker />
             <div className="dl-play-modes">
-              {[MODES.TDM, MODES.FFA].map((mode, i) => (
+              {MODE_ORDER.map((mode, i) => (
                 <ModeCard key={mode} mode={mode} index={i} />
               ))}
             </div>

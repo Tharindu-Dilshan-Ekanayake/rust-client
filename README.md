@@ -1,8 +1,9 @@
 # Modern Guns — client
 
 **Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
-with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch or
-Free-for-all, on two maps (picked on the *Find a match* screen, see [Maps](#maps)).
+with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch,
+Free-for-all or [Search & Destroy](#search--destroy), on three maps (picked on
+the *Find a match* screen, see [Maps](#maps)).
 
 *Atomic Acres* (84 × 84 m, the default) is a 1950s test-site suburb. A school
 bus and a moving truck stand in the cul-de-sac at its centre; you can walk
@@ -71,6 +72,38 @@ minimap, ladders, effects and menu camera all follow the active map.
   stairwell and roof lines up.
 - Names and signage are original (no other game's trademarks); Atomic Acres'
   layout follows the classic suburban cul-de-sac.
+
+## Search & Destroy
+
+One life a round: the attackers plant the bomb on site **A** or **B**, the
+defenders stop them or defuse it, first side to 4 rounds, sides swap every 3.
+Each round the bomb waits on the ground in front of the attackers' spawn
+("Grab the bomb"): the first one to it when the round goes live carries it, and
+the rest of the team escorts them.
+The rules run on the server (`game/searchDestroy.js` there, numbers in `SND`
+in `shared/constants.js`, sites in each map's `snd`); `game/snd.js` mirrors
+just enough to show prompts and lock movement on time.
+
+- **Plant / defuse**: hold **F** (on a phone, the PLANT / DEFUSE button that
+  appears left of the fire cluster): inside a site's ring carrying the bomb, or
+  within 1.8 m of a planted bomb as a defender. You can't move or shoot while
+  holding it; a bar under the crosshair (and a ring round the touch button) fills
+  as the server counts. Each round starts with a 5 s freeze: look around, no moving.
+- **HUD** (`ui/SndHud.jsx`): rounds won either side of the clock, a pip per
+  player still standing and who attacks (ATK) or defends (DEF); once planted the
+  clock becomes the bomb's countdown. "You have the bomb" / "Bomb dropped" under
+  it. A / B and bomb markers in the world, pinned to the screen edge when off
+  screen and dimmed while you aim. Round banners under the bar: the freeze
+  countdown with your side (and match point), GO, then round won / lost, why,
+  and the score. Sites and the bomb on the minimap (`ui/sndMinimap.js`).
+- **In the world** (`game/fx/SndObjects.jsx`): each site's ring and stencilled
+  letter on the ground, and the bomb: blinking orange when dropped, red and
+  beeping faster as it runs down once planted, green when defused.
+- **Out of the round**: the camera stays on your body a moment, then goes over
+  a living teammate's shoulder (click / right-click, ← → or the on-screen arrows
+  to switch). Deploying mid-round you watch until the next one.
+- Network: `syncSnd` copies the round and bomb into `runtime.snd` every patch,
+  `onSnd` turns the server's `snd` events into banners, notices and sounds.
 
 ## Ranks
 
@@ -148,7 +181,8 @@ browser allows it (inside the Bloxity portal, the portal goes full screen).
   - Right side: drag to look. Holding Fire also looks.
   - Buttons: Fire (plus a second one on the left), Aim (tap on / off), Jump,
     Crouch (tap) / prone (hold) / slide (while sprinting), Reload, Swap, Frag
-    (hold to cook), Tactical, Knife.
+    (hold to cook), Tactical, Knife. In Search & Destroy a bigger PLANT /
+    DEFUSE button (hold) appears left of them while you can use it.
   - Up top: menu and scoreboard.
   - The HUD moves out of their way: health under the minimap, ammo under the
     kill feed, no XP strip.
@@ -170,6 +204,7 @@ browser allows it (inside the Bloxity portal, the portal goes full screen).
 | V | Quick knife: whips the knife out for a slash with any weapon (lunges at close targets) |
 | G (hold) | Cook + throw frag |
 | Q | Flashbang or smoke |
+| F (hold) | Plant / defuse the bomb (Search & Destroy) |
 | B | Change class (applies next spawn) |
 | Tab / Esc | Scoreboard / menu (the match keeps running) |
 
@@ -186,7 +221,7 @@ signed in to your Bloxity account, or as a Bloxity guest.
 
 ## Private matches
 
-Play → *Create a room* picks TDM or FFA, the size (1v1 to 4v4 / 2 to 8 players)
+Play → *Create a room* picks TDM, Search & Destroy or FFA, the size (1v1 to 4v4 / 2 to 8 players)
 and whether bots fill empty slots. The lobby, deploy screen and pause menu show
 the 6-character room key with a copy button; friends enter it under *Join with
 a key* (six boxes; pasting works). Private rooms never take players from public

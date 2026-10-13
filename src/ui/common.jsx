@@ -42,6 +42,7 @@ const PATHS = {
   smoke: 'M8 3h8v2h-1v12h1v2H8v-2h1V5H8zM11 8h2v6h-2z',
   fall: 'M10 2l6 8h-4v10h-4V10H4z',
   skull: 'M12 2a8 8 0 0 0-8 8v4l3 2v4h10v-4l3-2v-4a8 8 0 0 0-8-8zm-3 9a2 2 0 1 1 0 .1zm6 0a2 2 0 1 1 0 .1z',
+  bomb: 'M3 8h18v12H3zM6 11v5h8v-5zM16 12v2h2v-2zM9 8V5a3 3 0 0 1 3-3h4v2h-4a1 1 0 0 0-1 1v3z',
 }
 const VIEWBOX = {
   ar: '0 0 50 20',
@@ -59,6 +60,7 @@ const VIEWBOX = {
   smoke: '0 0 24 22',
   fall: '0 0 20 22',
   skull: '0 0 24 22',
+  bomb: '0 0 24 22',
 }
 
 export function Icon({ name, height = 16, color = 'currentColor', style }) {

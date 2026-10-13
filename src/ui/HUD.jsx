@@ -4,19 +4,21 @@ import { sfx } from '../audio/sfx.js'
 
 import { IS_TOUCH, requestLock } from '../game/player/input.js'
 import { runtime } from '../game/runtime.js'
-import { TEAM_LABELS, TEAMS } from '../shared/constants.js'
+import { isTeamMode, TEAM_LABELS, TEAMS } from '../shared/constants.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { useActiveMap, useGameStore } from '../store/gameStore.js'
 import { Button, Icon } from './common.jsx'
 import { PromotionBanner, XpBar, XpFeed } from './Progression.jsx'
 import { RankInsignia } from './RankInsignia.jsx'
+import { ObjectiveMarkers, RoundBanner, SndTopBar, UsePrompt } from './SndHud.jsx'
+import { drawSndMinimap } from './sndMinimap.js'
 import { goFullscreen } from './mobile.js'
 import { uiScale } from './uiScale.js'
 import { drawMapPlan } from './mapPlan.js'
 import { fmtTime, useAnimationFrame } from './uiUtils.js'
 
 const teamColor = (team, mode, isMe) =>
-  mode === 'tdm' ? (team === TEAMS.ALPHA ? 'var(--alpha)' : team === TEAMS.BRAVO ? 'var(--bravo)' : 'var(--text)') : isMe ? 'var(--accent)' : 'var(--text)'
+  isTeamMode(mode) ? (team === TEAMS.ALPHA ? 'var(--alpha)' : team === TEAMS.BRAVO ? 'var(--bravo)' : 'var(--text)') : isMe ? 'var(--accent)' : 'var(--text)'
 
 /* ---------------------------------------------------------------------------
  * Bottom-left: health + class
@@ -325,7 +327,7 @@ function KillFeed() {
       {feed.map((k) => (
         <div key={k.id} className={`row ${k.mine || k.me ? 'mine' : ''}`}>
           {k.killer && k.killer !== k.victim && <span style={{ color: teamColor(k.killerTeam, mode, k.mine) }}>{k.killer}</span>}
-          <Icon name={WEAPONS[k.weapon] || EQUIPMENT[k.weapon] ? k.weapon : k.weapon === 'fall' ? 'fall' : 'skull'} height={14} />
+          <Icon name={WEAPONS[k.weapon] || EQUIPMENT[k.weapon] || k.weapon === 'bomb' ? k.weapon : k.weapon === 'fall' ? 'fall' : 'skull'} height={14} />
           {k.hs && <Icon name="skull" height={13} color="var(--accent)" />}
           <span style={{ color: teamColor(k.victimTeam, mode, k.me) }}>{k.victim}</span>
         </div>
@@ -367,10 +369,11 @@ function Minimap() {
     ctx.clearRect(0, 0, size, size)
     ctx.drawImage(base.canvas, 0, 0)
     const { mode, team } = useGameStore.getState()
+    if (mode === 'snd') drawSndMinimap(ctx, tx, scale, map, team)
     const now = performance.now()
     for (const r of runtime.remotes.values()) {
       if (!r.alive) continue
-      const friendly = mode === 'tdm' && r.team === team
+      const friendly = isTeamMode(mode) && r.team === team
       if (!friendly && now - (r.loudAt ?? 0) > 2500) continue
       ctx.fillStyle = friendly ? '#3FA9F5' : '#E5484D'
       ctx.beginPath()
@@ -431,7 +434,7 @@ export function ScoreTable({ highlightMvp = false }) {
       <th>Ping</th>
     </tr>
   )
-  if (mode !== 'tdm') {
+  if (!isTeamMode(mode)) {
     return (
       <table>
         <thead>{head}</thead>
@@ -636,10 +639,12 @@ export function HUD() {
   const gameState = useGameStore((s) => s.gameState)
   const showMinimap = useGameStore((s) => s.settings.minimap)
   const showFps = useGameStore((s) => s.settings.showFps)
+  const snd = useGameStore((s) => s.mode === 'snd')
   const alive = gameState === 'playing'
 
   return (
-    <div className="dl-hud">
+    <div className={`dl-hud ${snd ? 'snd' : ''}`}>
+      {snd && <ObjectiveMarkers />}
       <ScopeOverlay />
       <FlashOverlay />
       <LowHealth />
@@ -651,12 +656,14 @@ export function HUD() {
           <Hitmarker />
           <DamageMarks />
           <CookBar />
+          {snd && <UsePrompt />}
           <HealthBox />
           <AmmoBox />
         </>
       )}
       {showMinimap && <Minimap />}
-      <TopBar />
+      {snd ? <SndTopBar /> : <TopBar />}
+      {snd && <RoundBanner />}
       <XpFeed />
       <PromotionBanner />
       {alive && <XpBar />}

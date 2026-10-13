@@ -3,7 +3,7 @@ import { Vector3 } from 'three'
 import { reloadFoley } from '../../audio/bank.js'
 import { sfx } from '../../audio/sfx.js'
 import { net } from '../../net/network.js'
-import { BULLET_GROUPS } from '../../shared/constants.js'
+import { BULLET_GROUPS, isTeamMode } from '../../shared/constants.js'
 import { chestPoint, hitboxFor, rayHitbox } from '../../shared/hitbox.js'
 import { attachmentsFor, DEFAULT_CLASS, effectiveWeapon, EQUIPMENT, PUMP_RACK_TIME, reloadDuration, shellsToLoad, WEAPONS } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
@@ -32,7 +32,7 @@ function* enemyTargets() {
   const { mode, team } = useGameStore.getState()
   for (const r of runtime.remotes.values()) {
     if (!r.alive || r.state !== 'alive') continue
-    if (mode === 'tdm' && r.team === team) continue
+    if (isTeamMode(mode) && r.team === team) continue
     yield r
   }
 }

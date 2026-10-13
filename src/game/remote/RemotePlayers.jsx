@@ -4,7 +4,7 @@ import { Object3D, Vector3 } from 'three'
 
 import { sfx } from '../../audio/sfx.js'
 import { renderTime, sampleRemote } from '../../net/network.js'
-import { PLAYER } from '../../shared/constants.js'
+import { isTeamMode, PLAYER } from '../../shared/constants.js'
 import { activeMap } from '../../store/gameStore.js'
 import { parseKit } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
@@ -112,7 +112,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
 
     const myTeam = useGameStore.getState().team
     const mode = useGameStore.getState().mode
-    const friendly = mode === 'tdm' && r.team === myTeam
+    const friendly = isTeamMode(mode) && r.team === myTeam
     const wantColor = friendly ? FRIEND_COLOR : ENEMY_COLOR
     if (plate.name !== r.name || plate.color !== wantColor || plate.onTop !== friendly) {
       setPlate({ name: r.name, color: wantColor, onTop: friendly })

@@ -7,6 +7,7 @@ import { fx } from '../game/fx/fxApi.js'
 import { releaseLock } from '../game/player/input.js'
 import { lineClear } from '../game/physicsQueries.js'
 import { emit, runtime } from '../game/runtime.js'
+import { cycleSpectate } from '../game/snd.js'
 import {
   DEPLOY_TIMEOUT,
   INTERP_DELAY_MS,
@@ -15,6 +16,7 @@ import {
   ROOM_CODE_LENGTH,
   ROOM_NAME,
   SERVER_MOVING_CODE,
+  SND,
   TEAM_LABELS,
   TEAM_SELECT_TIMEOUT,
 } from '../shared/constants.js'
@@ -347,6 +349,7 @@ class Network {
       }
     })
     on('explosion', (m) => this.onExplosion(m))
+    on('snd', (m) => this.onSnd(m))
     on('flash', (m) => this.onFlash(m))
     on('match_end', (m) => {
       releasePointer()
@@ -444,6 +447,7 @@ class Network {
     })
 
     this.trackClock(freshest)
+    if (state.mode === 'snd') this.syncSnd(state, myId)
 
     for (const id of [...this.buffers.keys()]) {
       if (!seen.has(id)) {
@@ -472,6 +476,9 @@ class Network {
         } else if (me.state === 'dead' && prev === 'alive' && getGame().gameState === 'playing') {
           // Normally the kill message already did this; covers e.g. falling out.
           this.enterDeath('', 'fall', 0, false)
+        } else if (me.state === 'dead' && state.mode === 'snd' && getGame().gameState === 'lobby') {
+          // Search & Destroy: deployed too late into the round, so watching until the next.
+          this.enterSpectate(true)
         }
       }
     }
@@ -511,8 +518,108 @@ class Network {
         mvp: state.mvp,
         restartIn: state.restartIn,
         mode: state.mode,
+        round: state.round ?? 0,
+        roundPhase: state.roundPhase ?? '',
+        attackers: state.attackers ?? '',
+        bombState: state.bombState ?? '',
+        bombCarrier: state.bombCarrier ?? '',
+        bombSite: state.bombSite ?? '',
       },
     })
+  }
+
+  /**
+   * Search & Destroy: the room's round and bomb into runtime.snd (read every
+   * frame by the HUD and the local player), plus the moments worth a notice:
+   * the bomb changing hands.
+   */
+  syncSnd(state, myId) {
+    const r = runtime.snd
+    const carrierBefore = r.carrier
+    if (state.roundPhase === 'freeze' && r.phase !== 'freeze' && r.freezeEnds < performance.now()) {
+      r.freezeEnds = performance.now() + SND.freezeTime * 1000
+    }
+    r.phase = state.roundPhase
+    r.attackers = state.attackers
+    r.bombState = state.bombState
+    r.carrier = state.bombCarrier
+    r.site = state.bombSite
+    r.x = state.bombX
+    r.y = state.bombY
+    r.z = state.bombZ
+    r.left = state.bombLeft
+    r.action = state.action
+    r.by = state.actionBy
+    r.progress = state.actionProgress
+    if (r.carrier) r.taken = true
+    if (r.carrier && r.carrier !== carrierBefore && getGame().team === state.attackers) {
+      if (r.carrier === myId) {
+        getGame().pushNotice('YOU HAVE THE BOMB — PLANT IT ON A OR B', 3500, 'kill')
+        sfx.play('pickup')
+      } else {
+        getGame().pushNotice(`${state.players.get(r.carrier)?.name ?? 'A TEAMMATE'} HAS THE BOMB`, 2500)
+      }
+    }
+  }
+
+  /** Search & Destroy events from the server (game/searchDestroy.js on rust-server). */
+  onSnd(m) {
+    const game = getGame()
+    const mine = (team) => team === game.team
+    const now = performance.now()
+    switch (m.e) {
+      case 'round':
+        runtime.snd.freezeEnds = now + SND.freezeTime * 1000
+        runtime.snd.taken = false
+        useGameStore.setState({ roundBanner: { kind: 'start', round: m.round, side: mine(m.attackers) ? 'attack' : 'defend', at: now } })
+        sfx.play('roundStart')
+        break
+      case 'live':
+        useGameStore.setState({ roundBanner: { kind: 'go', at: now } })
+        sfx.play('roundGo')
+        setTimeout(() => useGameStore.setState((s) => (s.roundBanner?.kind === 'go' ? { roundBanner: null } : {})), 1400)
+        break
+      case 'planted': {
+        const attacking = mine(this.room?.state.attackers)
+        game.pushNotice(`BOMB PLANTED ON ${m.site}${attacking ? ' — DEFEND IT' : ' — DEFUSE IT'}`, 4000, attacking ? 'kill' : 'warn')
+        if (Array.isArray(m.p)) sfx.play('bombPlanted', { pos: m.p, ref: 8, maxDistance: 120 })
+        break
+      }
+      case 'defused':
+        game.pushNotice('BOMB DEFUSED', 3000, mine(this.room?.state.attackers) ? 'warn' : 'kill')
+        sfx.play('bombDefused')
+        break
+      case 'dropped':
+        if (mine(this.room?.state.attackers)) game.pushNotice('BOMB DROPPED — PICK IT UP', 2500, 'warn')
+        break
+      case 'swap':
+        game.pushNotice(`SIDES SWAPPED — YOU ${mine(m.attackers) ? 'ATTACK' : 'DEFEND'} NOW`, 4500, 'warn')
+        break
+      case 'end': {
+        const won = mine(m.winner)
+        useGameStore.setState({ roundBanner: { kind: 'end', won, why: m.why, a: m.a, b: m.b, counted: m.counted !== false, at: now } })
+        sfx.play(won ? 'roundWin' : 'roundLoss')
+        break
+      }
+      case 'wait':
+        this.enterSpectate(true)
+        break
+    }
+  }
+
+  /** Search & Destroy: out of this round (dead, or joined too late); watching a teammate. */
+  enterSpectate(waiting = false) {
+    runtime.local.alive = false
+    runtime.death.at.copy(runtime.local.feet)
+    runtime.death.killerId = ''
+    const now = performance.now()
+    useGameStore.setState({
+      gameState: 'dead',
+      overlay: null,
+      death: { killerId: '', killerName: '', killerTeam: '', weapon: '', killerHp: 0, headshot: false, self: true, waiting, at: now, respawnAt: 0 },
+    })
+    cycleSpectate(0)
+    emit('death')
   }
 
   onSpawn(m) {
@@ -543,9 +650,10 @@ class Network {
         headshot,
         self: !killerId || killerId === this.sessionId,
         at: now,
-        respawnAt: now + RESPAWN_DELAY * 1000,
+        respawnAt: getGame().mode === 'snd' ? 0 : now + RESPAWN_DELAY * 1000,
       },
     })
+    if (getGame().mode === 'snd') cycleSpectate(0)
     emit('death')
   }
 
@@ -647,6 +755,18 @@ class Network {
 
   onExplosion(m) {
     const p = m.p
+    if (m.k === 'bomb') {
+      // The bomb: a fireball and a boom heard across the map, the ground shaking everywhere.
+      fx.explosion(p)
+      fx.explosion([p[0] + 1.2, p[1] + 1.5, p[2] - 0.8])
+      fx.explosion([p[0] - 1.0, p[1] + 2.6, p[2] + 0.9])
+      sfx.play('explosion', { pos: p, ref: 25, maxDistance: 400, volume: 1 })
+      sfx.play('bombBlast', { volume: 0.9 })
+      const l = runtime.local
+      const d = Math.hypot(p[0] - l.feet.x, p[1] - l.feet.y, p[2] - l.feet.z)
+      runtime.view.shake = Math.min(2, runtime.view.shake + Math.max(0.35, 1.8 * (1 - d / 60)))
+      return
+    }
     if (m.k === 'frag' || m.k === 'rocket') {
       fx.explosion(p)
       sfx.play('explosion', { pos: p, ref: 9, maxDistance: 160 })
@@ -745,4 +865,4 @@ const MAX_EXTRAPOLATE_MS = 120
 
 /** Weapon display name, used by HUD/kill feed. */
 export const weaponName = (id) =>
-  WEAPONS[id]?.name ?? EQUIPMENT[id]?.name ?? (id === 'fall' ? 'Fall' : id ?? '')
+  WEAPONS[id]?.name ?? EQUIPMENT[id]?.name ?? (id === 'fall' ? 'Fall' : id === 'bomb' ? 'Bomb' : id ?? '')

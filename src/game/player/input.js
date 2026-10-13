@@ -33,6 +33,8 @@ export const BINDS = Object.freeze({
   quickMelee: ['KeyV', 'Touch:knife'],
   lethal: ['KeyG', 'Touch:lethal'],
   tactical: ['KeyQ', 'Touch:tactical'],
+  /** Search & Destroy: hold to plant or defuse the bomb. */
+  use: ['KeyF', 'Touch:use'],
 })
 
 const GAME_CODES = new Set(Object.values(BINDS).flat())

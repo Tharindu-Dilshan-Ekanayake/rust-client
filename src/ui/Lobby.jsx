@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { sfx } from '../audio/sfx.js'
 import { requestLock } from '../game/player/input.js'
 import { net } from '../net/network.js'
-import { MATCH_RULES, MODE_LABELS, TEAM_LABELS, TEAMS } from '../shared/constants.js'
+import { isTeamMode, MATCH_RULES, MODE_LABELS, TEAM_LABELS, TEAMS } from '../shared/constants.js'
 import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { toWireClass, useGameStore } from '../store/gameStore.js'
 import { Button, Icon, RoomKey, WarmupBar } from './common.jsx'
@@ -143,7 +143,9 @@ export function TeamSelect() {
     <div className="dl-screen dark">
       <div className="dl-center" style={{ flexDirection: 'column', gap: 22 }}>
         <div style={{ textAlign: 'center' }}>
-          <div className="dl-label">Team deathmatch · {room.players.length} in lobby</div>
+          <div className="dl-label">
+            {MODE_LABELS[room.mode] ?? MODE_LABELS.tdm} · {room.players.length} in lobby
+          </div>
           <div className="dl-h" style={{ fontSize: 40 }}>
             Choose your side
           </div>
@@ -210,8 +212,8 @@ export function DeploySelect() {
   }, [left])
 
   const players = [...room.players].filter((p) => p.state !== 'selecting')
-  const mates = mode === 'tdm' ? players.filter((p) => p.team === team) : players
-  const others = mode === 'tdm' ? players.filter((p) => p.team && p.team !== team) : []
+  const mates = isTeamMode(mode) ? players.filter((p) => p.team === team) : players
+  const others = isTeamMode(mode) ? players.filter((p) => p.team && p.team !== team) : []
   const color = team === TEAMS.ALPHA ? 'var(--alpha)' : team === TEAMS.BRAVO ? 'var(--bravo)' : 'var(--accent)'
 
   return (
@@ -221,7 +223,7 @@ export function DeploySelect() {
           <div>
             <div className="dl-label">
               {MODE_LABELS[mode]}
-              {mode === 'tdm' && team && (
+              {isTeamMode(mode) && team && (
                 <>
                   {' · '}
                   <span style={{ color }}>TEAM {TEAM_LABELS[team]}</span>
@@ -236,7 +238,7 @@ export function DeploySelect() {
           </div>
           <div className="dl-panel" style={{ padding: 14, minWidth: 300, maxHeight: 260, overflowY: 'auto' }}>
             <div className="dl-label" style={{ marginBottom: 8 }}>
-              {mode === 'tdm' ? 'Your team' : 'Lobby'} · {players.length} players
+              {isTeamMode(mode) ? 'Your team' : 'Lobby'} · {players.length} players
             </div>
             <Roster players={mates} myId={myId} />
             {others.length > 0 && (

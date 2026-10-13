@@ -187,8 +187,21 @@ export const useGameStore = create((set, get) => ({
     winner: '',
     mvp: '',
     restartIn: 0,
+    /* Search & Destroy (see net/network.js snapshotUi). */
+    round: 0,
+    roundPhase: '',
+    attackers: '',
+    bombState: '',
+    bombCarrier: '',
+    bombSite: '',
   },
   remoteIds: [],
+  /** Search & Destroy: what Use would do here ('plant' | 'defuse' | ''), from the local player. */
+  useHint: '',
+  /** The round banner: { kind: 'start' | 'end', ... , at } or null. */
+  roundBanner: null,
+  /** The teammate being watched while dead. */
+  spectateId: '',
   teamSelect: { deadline: 0, denied: '' },
   deployDeadline: 0,
 
