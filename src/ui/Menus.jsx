@@ -66,6 +66,18 @@ const MAP_TIPS = {
     ['The garden sheds', ' next to the two big houses have ammo crates that refill everything.'],
     ['The witch on the roundabout', ' is solid cover right in the middle of town.'],
   ],
+  terminal: [
+    ['Walk the jet bridge', ' from Gate 3 upstairs straight into the jet’s cabin.'],
+    ['Search & Destroy:', ' bomb site A is inside the terminal’s east hall, B inside the jet’s cabin by the wing exits.'],
+    ['Out of the jet three ways:', ' slide down from the front right door, step out onto a wing over it, or take the airstair truck at the back.'],
+    ['Glass breaks.', ' The first bullet (or a knife) shatters a pane and stops there; the next goes through, and so can you.'],
+    ['Up to the gates', ' by the escalators or the grand stair in the hall, the stairs at either end, or the steel stairs outside the east end.'],
+    ['The free airstair truck', ' off the end of the pier is a lookout over the stand.'],
+    ['The pier’s fallen floor', ' is a ramp from the baggage hall up to its gates.'],
+    ['The crashed jet is a tunnel:', ' in at its broken middle, out through the nose.'],
+    ['Container stacks, the fuel truck and the bus', ' are solid cover on the apron.'],
+    ['The hideout behind the toilets and the corner by the south fence', ' have ammo crates that refill everything.'],
+  ],
   bramble: [
     ['The dry creek is a trench.', ' Drop into its bed to cross the middle out of sight; crouch to get under the bridge and the boardwalk.'],
     ['Climb the water tower', ' to watch the whole field. The ladder is the only way up.'],
