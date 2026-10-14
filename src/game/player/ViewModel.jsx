@@ -26,7 +26,9 @@ import { RELOAD_KEYS } from '../../audio/bank.js'
 import { sfx } from '../../audio/sfx.js'
 import { ColorGrade } from '../ColorGrade.js'
 import { useBloxityStore } from '../../bloxity/store.js'
+import { baseOf, WEAPONS } from '../../shared/weapons.js'
 import { activeMapId, useActiveMap, useGameStore } from '../../store/gameStore.js'
+import { laserBeam } from '../models/laser.js'
 import { createWeaponModel, weaponMaterials } from '../models/weaponModels.js'
 import { makeArm, placeArm } from './arms.js'
 import { buildBloxArms, dressArm } from './bloxArms.js'
@@ -61,12 +63,15 @@ const POSES = {
   knife: { hip: [0.13, -0.12, -0.28], ads: [0.13, -0.12, -0.28], rot: [0.42, 0.9, 0.18] },
 }
 /** Viewmodel kick multiplier per weapon. */
-const HEAVY = { sniper: 2.4, viper: 2.1, pistol: 1.4, hornet: 0.75, smg: 0.8, shotgun: 2.2, lmg: 1.1, rpg: 2.6 }
+const HEAVY = { sniper: 2.4, viper: 2.1, pistol: 1.4, hornet: 0.75, smg: 0.8, shotgun: 2.2, lmg: 1.1, rpg: 2.6, volk: 1.15, talon: 1.3, mule: 1.3, buzzsaw: 0.9, kite: 2.0, ironwood: 2.6, sable: 1.5, goliath: 3.0, dragoon: 2.2, colonel: 1.6, wasp: 0.95, ripper: 0.7 }
 /** Muzzle-flash sprite size (rig units) per weapon. */
 const FLASH_SIZE = { sniper: 0.42, viper: 0.34, pistol: 0.22, hornet: 0.2, smg: 0.24, shotgun: 0.5, lmg: 0.36, rpg: 0.6 }
-/** Guns whose empty reload is quicker through the mag change and then works the action (see RELOAD_KEYS). */
+/** Gun families whose empty reload is quicker through the mag change and then works the action (see RELOAD_KEYS). */
 const EMPTY_ACTION = new Set(['ar', 'smg', 'hornet', 'pistol'])
-/** The charging handle each empty reload grabs (model space), and how far it travels back. */
+/**
+ * The charging handle each empty reload grabs (model space), and how far it
+ * travels back, per family; a gun's own 'charge' marker wins over these.
+ */
 const CHARGE_POINT = {
   ar: new Vector3(-0.012, 0.092, 0.135),
   smg: new Vector3(-0.03, 0.06, 0.08),
@@ -120,6 +125,8 @@ const _tw = new Vector3()
 const _te = new Vector3()
 
 function throwPose(vm, a) {
+  if (a.plant >= 0) return plantPose(a.plant)
+  if (a.detonate >= 0) return detonatePose(a.detonate)
   const t = vm.throwState
   const throwing = a.throw >= 0
   if (!a.cooking && !throwing) {
@@ -202,6 +209,55 @@ function throwPose(vm, a) {
   }
   return { active: true, grenade: !t.released, wrist: _tw, elbow: _te }
 }
+/* ---------------------------------------------------------------------------
+ * Claymore and detonator (camera space): the off hand brings the claymore up
+ * into view, then takes it down and forward to the ground, sets it, and comes
+ * back up empty; the detonator comes up to the chest, the thumb presses, and
+ * it goes away again.
+ * ------------------------------------------------------------------------- */
+
+const P_SHOW = new Vector3(-0.1, -0.15, -0.34)
+const P_DOWN = new Vector3(-0.06, -0.46, -0.44)
+const E_DOWN = new Vector3(-0.2, -0.5, -0.14)
+const D_UP = new Vector3(-0.11, -0.15, -0.3)
+
+function plantPose(k) {
+  if (k < 0.25) {
+    _tw.lerpVectors(T_LOW, P_SHOW, smooth(k / 0.25))
+    _te.copy(ELBOW_L)
+  } else if (k < 0.45) {
+    // Held out a moment, nudged forward: there it is.
+    _tw.copy(P_SHOW)
+    _tw.z -= 0.02 * Math.sin(((k - 0.25) / 0.2) * Math.PI * 0.5)
+    _te.copy(ELBOW_L)
+  } else if (k < 0.62) {
+    const f = smooth((k - 0.45) / 0.17)
+    _tw.lerpVectors(P_SHOW, P_DOWN, f)
+    _tw.z -= 0.02 * (1 - f)
+    _te.lerpVectors(ELBOW_L, E_DOWN, f)
+  } else if (k < 0.72) {
+    // Pressed into the ground.
+    _tw.copy(P_DOWN)
+    _tw.y -= 0.02 * Math.sin(((k - 0.62) / 0.1) * Math.PI)
+    _te.copy(E_DOWN)
+  } else {
+    const f = smooth((k - 0.72) / 0.28)
+    _tw.lerpVectors(P_DOWN, T_LOW, f)
+    _te.lerpVectors(E_DOWN, ELBOW_L, f)
+  }
+  return { active: true, grenade: k < 0.68, kind: 'claymore', wrist: _tw, elbow: _te }
+}
+
+function detonatePose(k) {
+  const up = k < 0.3 ? smooth(k / 0.3) : k > 0.72 ? 1 - smooth((k - 0.72) / 0.28) : 1
+  _tw.lerpVectors(T_LOW, D_UP, up)
+  // The thumb press: a little dip of the hand.
+  if (k > 0.38 && k < 0.55) _tw.y -= 0.012 * Math.sin(((k - 0.38) / 0.17) * Math.PI)
+  _te.copy(ELBOW_L)
+  return { active: true, grenade: true, kind: 'detonator', wrist: _tw, elbow: _te }
+}
+
+
 const KNIFE_VIEW_SCALE = 1.3
 const TRAIL_POINTS = 14
 
@@ -362,8 +418,9 @@ function buildModel(id, att, rig) {
   model.visible = false
   // The knife reads better a size up in first person.
   if (id === 'knife') model.scale.setScalar(KNIFE_VIEW_SCALE)
+  model.getObjectByName('laser')?.add(laserBeam())
   rig.add(model)
-  const pose = POSES[id] ?? POSES.ar
+  const pose = POSES[id] ?? POSES[baseOf(id)] ?? POSES.ar
   const sight = model.getObjectByName('sight')
   if (pose.ads || !sight) {
     model.userData.ads = new Vector3().fromArray(pose.ads ?? pose.hip)
@@ -435,7 +492,7 @@ export function ViewModel() {
     handShell.position.set(0, 0.004, -0.07)
     handShell.visible = false
     armL.add(handShell)
-    const grenades = { frag: ownMaterials(createWeaponModel('frag')), flash: ownMaterials(createWeaponModel('flash')), smoke: ownMaterials(createWeaponModel('smoke')) }
+    const grenades = Object.fromEntries(['frag', 'semtex', 'c4', 'claymore', 'detonator', 'flash', 'smoke'].map((k) => [k, ownMaterials(createWeaponModel(k))]))
     for (const g of Object.values(grenades)) {
       g.visible = false
       armL.add(g)
@@ -544,7 +601,7 @@ export function ViewModel() {
     const game = useGameStore.getState()
     const show = Boolean(a) && game.gameState === 'playing' && runtime.local.alive && !a.climbing
     // Fully scoped snipers see the scope overlay instead of the gun.
-    const scoped = a && a.weapon === 'sniper' && a.ads > 0.92
+    const scoped = a && WEAPONS[a.weapon]?.scoped && a.ads > 0.92
     vm.visible = show && !scoped
     if (!vm.visible) {
       vm.flashLight.intensity = 0
@@ -552,14 +609,15 @@ export function ViewModel() {
     }
 
     const id = a.weapon
-    const key = `${id}:${a.att?.optic ?? ''}:${a.att?.muzzle ?? ''}:${a.att?.mag ?? ''}`
+    const fam = baseOf(id)
+    const key = `${id}:${a.att?.optic ?? ''}:${a.att?.muzzle ?? ''}:${a.att?.mag ?? ''}:${a.att?.under ?? ''}`
     if (!vm.models.has(key)) vm.models.set(key, buildModel(id, a.att, vm.rig))
     if (lastWeapon.current !== key) {
       for (const [k, m] of vm.models) m.visible = k === key
       lastWeapon.current = key
     }
     const model = vm.models.get(key)
-    const pose = POSES[id] ?? POSES.ar
+    const pose = POSES[id] ?? POSES[fam] ?? POSES.ar
     const adsPose = model.userData.ads
 
     // Mouse sway: the gun lags slightly behind the view.
@@ -597,13 +655,14 @@ export function ViewModel() {
 
     // Recoil kick.
     const kick = a.kick * a.kick
-    const heavy = HEAVY[id] ?? 1
+    const heavy = HEAVY[id] ?? HEAVY[fam] ?? 1
     // Recoil pushes back and climbs, but much less when aimed so the sight stays usable.
     p.z += 0.03 * kick * heavy * (1 - t * 0.4)
     rxx += 0.07 * kick * heavy * (1 - t * 0.55)
 
     // Reload: tilt the gun in, drop the empty mag, the off hand brings a fresh one
     // up from the belt and slaps it home, then the gun rolls back level.
+    const chargeAt = model.getObjectByName('charge')?.position ?? CHARGE_POINT[fam]
     const mag = model.getObjectByName('mag')
     if (mag && !vm.magRest.has(mag)) vm.magRest.set(mag, { p: mag.position.clone(), r: mag.rotation.clone() })
     if (mag) {
@@ -627,7 +686,7 @@ export function ViewModel() {
       warhead.position.copy(warhead.userData.rest)
       warhead.visible = a.loaded !== false
     }
-    if (a.reload >= 0 && id === 'shotgun') {
+    if (a.reload >= 0 && fam === 'shotgun') {
       // Rolled onto its side so the loading port faces the off hand, which
       // fetches shells off the belt one at a time and thumbs them in.
       const rl = Math.min(1, a.reload)
@@ -642,7 +701,7 @@ export function ViewModel() {
         const k = a.shell - Math.floor(a.shell)
         if (a.shell >= 0 && k > 0.42 && k < 0.6) rxx -= 0.04 * Math.sin(((k - 0.42) / 0.18) * Math.PI)
       }
-    } else if (a.reload >= 0 && id === 'rpg') {
+    } else if (a.reload >= 0 && fam === 'rpg') {
       // The tube swings across with its muzzle up and to the left, so the
       // fresh rocket goes into the front within easy reach.
       const rl = Math.min(1, a.reload)
@@ -666,7 +725,7 @@ export function ViewModel() {
     } else if (a.reload >= 0) {
       const rl = Math.min(1, a.reload)
       // The same key moments the reload sounds are cued from (audio/bank.js).
-      const keys = RELOAD_KEYS[a.empty && EMPTY_ACTION.has(id) ? 'empty' : 'tactical']
+      const keys = RELOAD_KEYS[a.empty && EMPTY_ACTION.has(fam) ? 'empty' : 'tactical']
       // Bring the gun up toward the middle and roll it so the magwell faces the
       // off hand: the whole swap happens in view.
       const tilt = Math.sin(Math.min(1, rl * 1.1) * Math.PI)
@@ -708,7 +767,7 @@ export function ViewModel() {
       }
       // Empty: work the action. The off hand reaches the charging handle, rips
       // it back, lets go, and the bolt slams home with a kick through the gun.
-      if (keys.charge && CHARGE_POINT[id]) {
+      if (keys.charge && chargeAt) {
         const reach = keys.charge - 0.1
         if (rl > reach && rl < keys.slam + 0.12) {
           chargeHand = rl < keys.charge ? smooth((rl - reach) / 0.1) : rl < keys.slam ? 1 : 1 - smooth((rl - keys.slam) / 0.12)
@@ -791,7 +850,7 @@ export function ViewModel() {
     // Sniper bolt cycle; the revolver's cylinder indexes one chamber per shot.
     const bolt = model.getObjectByName('bolt')
     if (bolt && !bolt.userData.rest) bolt.userData.rest = bolt.position.clone()
-    if (bolt && id === 'sniper') {
+    if (bolt && WEAPONS[id]?.fireMode === 'bolt') {
       const rest = bolt.userData.rest
       if (a.bolt >= 0 && a.bolt < 0.8) {
         const b = Math.sin((a.bolt / 0.8) * Math.PI)
@@ -803,7 +862,7 @@ export function ViewModel() {
         bolt.rotation.z = 0
         bolt.position.z = rest.z
       }
-    } else if (bolt && id === 'viper') {
+    } else if (bolt && fam === 'viper') {
       if (a.sinceShot < vm.lastSince) vm.drumTarget += (Math.PI * 2) / 6
       vm.drum += (vm.drumTarget - vm.drum) * Math.min(1, dt * 22)
       bolt.rotation.z = vm.drum
@@ -834,10 +893,10 @@ export function ViewModel() {
     // Brass: out of the port on each shot; bolt guns and the pump throw theirs
     // on the backstroke, and the launcher has nothing to throw.
     const eject = model.getObjectByName('eject')
-    const shellKind = SHELL_KIND[id]
-    const cycleAt = id === 'sniper' ? 0.42 : id === 'shotgun' ? 0.33 : -1
+    const shellKind = SHELL_KIND[fam]
+    const cycleAt = WEAPONS[id]?.fireMode === 'bolt' ? 0.42 : fam === 'shotgun' ? 0.33 : -1
     const cycled = cycleAt > 0 && vm.lastBolt < cycleAt && a.bolt >= cycleAt
-    const rackEject = id === 'shotgun' && vm.lastRack < 0.4 && a.rack >= 0.4
+    const rackEject = fam === 'shotgun' && vm.lastRack < 0.4 && a.rack >= 0.4
     if (eject && shellKind && ((newShot && cycleAt < 0) || cycled || rackEject)) ejectShell(vm, eject, shellKind)
     vm.lastBolt = a.bolt ?? -1
     vm.lastRack = a.rack ?? -1
@@ -856,7 +915,7 @@ export function ViewModel() {
 
     const grenadeKind = a.grenadeKind ?? 'frag'
     const held = throwPose(vm, a)
-    for (const [k, g] of Object.entries(vm.grenades)) g.visible = held.grenade && k === grenadeKind
+    for (const [k, g] of Object.entries(vm.grenades)) g.visible = held.grenade && k === (held.kind ?? grenadeKind)
     if (held.active) {
       placeArm(vm.armL, held.wrist, held.elbow)
       vm.armL.visible = true
@@ -875,8 +934,8 @@ export function ViewModel() {
       }
       if (chargeHand > 0) {
         // Fingers over the handle from the left, pulling it back toward the face.
-        _c.copy(CHARGE_POINT[id])
-        _c.z += CHARGE_TRAVEL[id] * chargePull
+        _c.copy(chargeAt)
+        _c.z += (CHARGE_TRAVEL[fam] ?? 0.045) * chargePull
         _c.x -= 0.045
         _c.y -= 0.01
         wristL.lerp(toCam(_c, _d), chargeHand)
@@ -922,7 +981,7 @@ export function ViewModel() {
       model.localToWorld(vm.flash.position)
       vm.rig.worldToLocal(vm.flash.position)
       // Rig-local units (the rig is scaled by VM_SCALE). A suppressor leaves a faint puff.
-      const s = (FLASH_SIZE[id] ?? 0.3) * (a.quiet ? 0.3 : 1) * (0.8 + Math.random() * 0.4)
+      const s = (FLASH_SIZE[id] ?? FLASH_SIZE[fam] ?? 0.3) * (a.quiet ? 0.3 : 1) * (0.8 + Math.random() * 0.4)
       vm.flash.scale.setScalar(s)
       vm.flash.material.rotation = Math.random() * Math.PI
     }

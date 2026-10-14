@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { AdditiveBlending, Color, MeshStandardMaterial, NormalBlending, Sprite, SpriteMaterial, Vector3 } from 'three'
+import { AdditiveBlending, Color, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, NormalBlending, Sprite, SpriteMaterial, Vector3 } from 'three'
 
 import { net } from '../../net/network.js'
 import { seededRandom } from '../../shared/math.js'
@@ -31,10 +31,33 @@ function useCollectionKeys(pick) {
  * Grenades in flight
  * ------------------------------------------------------------------------- */
 
+/** A claymore's two trip lasers: faint red lines across the edges of its kill zone. */
+let tripParts = null
+function tripLasers() {
+  if (!tripParts) {
+    const { trigger, cone } = EQUIPMENT.claymore
+    const material = new MeshBasicMaterial({ color: '#ff2a1a', transparent: true, opacity: 0.35, blending: AdditiveBlending, depthWrite: false, toneMapped: false })
+    const geometry = new CylinderGeometry(0.0012, 0.0012, trigger, 4, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -trigger / 2)
+    tripParts = { material, geometry, cone }
+  }
+  const g = new Group()
+  for (const s of [-1, 1]) {
+    const beam = new Mesh(tripParts.geometry, tripParts.material)
+    beam.rotation.y = s * tripParts.cone * 0.85
+    beam.position.set(s * 0.06, 0.1, -0.03)
+    g.add(beam)
+  }
+  return g
+}
+
 const Grenade = memo(function Grenade({ id }) {
   const ref = useRef(null)
   const kind = net.room?.state.grenades.get(id)?.kind ?? 'frag'
-  const model = useMemo(() => createWeaponModel(kind), [kind])
+  const model = useMemo(() => {
+    const m = createWeaponModel(kind)
+    if (kind === 'claymore') m.add(tripLasers())
+    return m
+  }, [kind])
   const spin = useRef(Math.random() * 6)
   useFrame((_s, dt) => {
     const g = net.room?.state.grenades.get(id)
@@ -46,10 +69,15 @@ const Grenade = memo(function Grenade({ id }) {
       obj.position.set(g.x, g.y, g.z)
       obj.userData.init = true
     }
+    if (g.stuck || kind === 'claymore') {
+      // Set down (or stuck fast): it lies the way it landed, facing its yaw.
+      obj.rotation.set(0, g.yaw, 0)
+      return
+    }
     spin.current += dt * 8
     obj.rotation.set(spin.current, spin.current * 0.6, 0)
   })
-  return <primitive ref={ref} object={model} scale={1.4} />
+  return <primitive ref={ref} object={model} scale={kind === 'claymore' || kind === 'c4' ? 1.15 : 1.4} />
 })
 
 /* ---------------------------------------------------------------------------

@@ -37,12 +37,37 @@ through the whole match: debris whipping past, sand sheets low over the ground,
 and gusts that close the haze in. Out past the wall: a rail spur, storage tanks
 and hills.
 
-Classes pick a primary (VX-7 AR, VK-9 Vandal SMG, Breacher 12 pump shotgun,
-Longhaul .50 sniper, Bulldog LMG), a secondary (Kestrel P9, Viper .45 revolver,
-Hornet machine pistol or the Warhead RL rocket launcher) and a tactical, and each
-gun takes attachments: optics (red dot, holo), muzzle (suppressor, compensator)
-and extended mags. Aiming lines up whatever optic is fitted with the centre of
-the screen; suppressed shots are quiet and never show on enemy minimaps.
+The arsenal (`shared/weapons.js`) is sorted into categories, five guns in most:
+
+| Category | Guns |
+| --- | --- |
+| Assault rifles | VX-7 Ranger, Volk-47, Talon H (battle rifle), Strix F2 (3-round burst bullpup), Harrier 36 |
+| SMGs | VK-9 Vandal, Wasp 45, Mako 57 (50-round top mag), Ripper V (1,200 rpm), Rattler |
+| Sniper rifles | Longhaul .50, Kite SR, Ironwood M91 (bolt), Sable DMR (semi), Goliath .50 (semi) |
+| Machine guns | Bulldog LMG, Mule 60, Ram PK, Buzzsaw 42, Tundra RPK |
+| Shotguns | Breacher 12 |
+| Pistols (secondary) | Kestrel P9, Colonel 45, Dragoon .50, Viper .45 revolver, Hornet MP (machine pistol) |
+| Launchers (secondary) | Warhead RL |
+
+Each gun has its own model (`game/models/guns/`, built from the shared parts in
+`game/models/weaponKit.js`) but animates and sounds as its family (`base`).
+Attachments fit four slots: optic (red dot, holo, ACOG 3×), muzzle (suppressor,
+compensator, muzzle brake), underbarrel (vertical grip, angled grip, laser) and
+magazine (extended, fast); `attachSlots` says what each gun takes. Aiming lines
+up whatever optic is fitted with the centre of the screen; suppressed shots are
+quiet and never show on enemy minimaps; a laser's beam shows on other players'
+guns.
+
+Lethals: frag (cook it), Semtex (sticks to whatever it hits, players too), C4
+(thrown, then G again sets it off; one out at a time) and claymore (planted,
+trips on an enemy walking into its front). Tactical: flashbang or smoke.
+
+**Create-a-class** (`ui/ClassEditor.jsx`) is one choice per screen: the class
+(name, Primary, Secondary, Lethal, Tactical, Melee) → Primary → a category →
+its guns (with a stat preview) → that gun's attachments, with a breadcrumb to
+jump back and Back / Esc to step up. The 3D preview and stats sit beside every
+step. Gun icons (menus, kill feed, HUD) are each gun's own side silhouette,
+drawn from its model (`ui/weaponIcons.js`).
 
 ## Maps
 
@@ -421,7 +446,15 @@ Built to run smoothly on low-end PCs without hitches:
 - A gun + attachments combination nobody has built yet (another player's custom
   class) is built in idle time a step per frame (`prepareWeaponModel`), with
   the default-attachment gun standing in; your own class's guns are built while
-  you're still in the menus.
+  you're still in the menus, first.
+- Every gun and bot loadout for the shader warm-up is built the same way (in
+  idle time, joining `PerfDirector`'s showcase as each is ready) rather than
+  all at once, which froze the menu for over a second. The showcase is parked
+  for its shadow shaders only once the driver says its shaders are linked.
+- Gun icons are rasterised on the CPU into a 4×4-supersampled coverage mask
+  (a few ms each) on a CPU-backed canvas: a canvas path of thousands of
+  triangles took up to ~0.8 s, and reading back a GPU canvas mid-match waited
+  on the GPU for ~0.4 s on an iGPU.
 - The sound bank is synthesised in a Web Worker, off the main thread.
 - **Atomic Acres** draws in ~35–55 calls (~100k triangles) from anywhere on the
   map, against ~90–125 for Dustline:
@@ -499,7 +532,7 @@ freezes to nothing over ~0.15 s.
 - `/?preview=map` — orbit the map; pin a view with `&cam=x,y,z&look=x,y,z`,
   pick it with `&map=acres` or `&map=dustline`.
 - `/?preview=guns` — every weapon with a spread of attachments (`&spin`,
-  `&only=N` for a close-up).
+  `&only=N` for a close-up, `&cat=ar|smg|sniper|lmg|pistol` for one category).
 - `/?preview=avatars` — every remote-player pose side by side (`&view=side`),
   `&probe` for raw rig-axis tests.
 - `/?debug` — exposes `window.__dl`; `__dl.sandbox([x, y, z], yaw, cls?)` spawns

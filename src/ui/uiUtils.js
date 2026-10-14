@@ -3,14 +3,18 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import { sfx } from '../audio/sfx.js'
 import { ATTACHMENTS } from '../shared/weapons.js'
 
-/** Short summary of fitted attachments, e.g. "Red Dot · Suppressor". */
-export function attachmentSummary(att) {
+/** Names of the fitted attachments that aren't the factory part, e.g. ["Red Dot", "Suppressor"]. */
+export function attachmentNames(att) {
   const parts = []
   if (att?.optic && att.optic !== 'iron') parts.push(ATTACHMENTS.optic[att.optic].name)
   if (att?.muzzle && att.muzzle !== 'none') parts.push(ATTACHMENTS.muzzle[att.muzzle].name)
-  if (att?.mag === 'extended') parts.push('Ext. Mag')
-  return parts.join(' · ')
+  if (att?.under && att.under !== 'none') parts.push(ATTACHMENTS.under[att.under].name)
+  if (att?.mag && att.mag !== 'std') parts.push(ATTACHMENTS.mag[att.mag].name)
+  return parts
 }
+
+/** Short summary of fitted attachments, e.g. "Red Dot · Suppressor". */
+export const attachmentSummary = (att) => attachmentNames(att).join(' · ')
 
 export const uiClick = () => {
   sfx.unlockAudio()

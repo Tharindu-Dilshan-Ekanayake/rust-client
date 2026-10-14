@@ -5,7 +5,8 @@ import { Bone, BoxGeometry, BufferAttribute, DataTexture, Group, MeshDepthMateri
 import { BOT_KITS, PRESET_CLASSES, WEAPONS } from '../shared/weapons.js'
 import { toWireClass, useGameStore } from '../store/gameStore.js'
 import { avatarSkinMaterial } from './avatarRig.js'
-import { createWeaponLod, createWeaponModel, prepareWeaponModel } from './models/weaponModels.js'
+import { remoteLaserBeam } from './models/laser.js'
+import { createWeaponLod, createWeaponModel, hasWeaponModel, prepareWeaponModel } from './models/weaponModels.js'
 import { makeArm } from './player/arms.js'
 import { spriteShowcase } from './remote/sprites.js'
 import { QUALITY_STEPS } from './quality.js'
@@ -28,32 +29,32 @@ import { leanMatrixWalk } from './sceneMatrices.js'
 
 const TEXTURE_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'alphaMap', 'aoMap', 'bumpMap', 'lightMap']
 
-/** Every weapon, grenade, the rocket and an arm: shader warm-up for both the world's lights and the viewmodel's. */
+/**
+ * Shader warm-up for both the world's lights and the viewmodel's: an arm, the
+ * player bodies, the sprites, and (as they get built, see SHOWCASE_GUNS) every
+ * weapon, every piece of equipment and the rocket.
+ */
 function weaponShowcase() {
   const g = new Group()
-  for (const id of [...Object.keys(WEAPONS), 'frag', 'flash', 'smoke', 'rocket']) {
-    try {
-      g.add(createWeaponModel(id))
-    } catch {
-      // Not every id has a model (the knife's is built elsewhere); skip.
-    }
-  }
   g.add(makeArm(1))
-  // Guns other players are sure to carry, built now rather than when they
-  // first show up: every bot loadout and the preset classes, with far LODs.
-  const kits = [
-    ...Object.entries(BOT_KITS).flatMap(([id, list]) => list.map((att) => [id, att])),
-    ...PRESET_CLASSES.map((c) => [c.primary, c.primaryAtt]),
-  ]
-  for (const [id, att] of kits) {
-    g.add(createWeaponModel(id, att))
-    const lod = createWeaponLod(id, att)
-    if (lod) g.add(lod)
-  }
+  g.add(remoteLaserBeam())
   for (const body of avatarStandIns()) g.add(body)
   g.add(spriteShowcase())
   return g
 }
+
+/**
+ * The guns in the showcase, as [id, attachments, with its far LOD]: every model
+ * bare, then the guns other players are sure to carry (every bot loadout and
+ * the preset classes) so those are built before they first show up. ~50 models
+ * took well over a second to build in one go; they're built in idle moments
+ * instead (prepareWeaponModel) and join the showcase as each is ready.
+ */
+const SHOWCASE_GUNS = [
+  ...[...Object.keys(WEAPONS), 'frag', 'semtex', 'c4', 'claymore', 'detonator', 'flash', 'smoke', 'rocket'].map((id) => [id, undefined, false]),
+  ...Object.entries(BOT_KITS).flatMap(([id, list]) => list.map((att) => [id, att, true])),
+  ...PRESET_CLASSES.map((c) => [c.primary, c.primaryAtt, true]),
+]
 
 /**
  * Stand-ins for a player's body: the same skinned material, without and with
@@ -125,14 +126,18 @@ export function PerfDirector() {
   const classId = useGameStore((s) => s.selectedClassId)
   const classes = useGameStore((s) => s.classes)
 
-  // Your own class's guns, built in idle time while you're still in the menus.
+  // Your own class's guns, built in idle time while you're still in the menus (ahead of the rest).
   useEffect(() => {
     const c = toWireClass(useGameStore.getState().getClass(classId))
     if (!c) return
-    prepareWeaponModel(c.primary, c.primaryAtt)
-    prepareWeaponModel(c.secondary, c.secondaryAtt)
+    prepareWeaponModel(c.primary, c.primaryAtt, true)
+    prepareWeaponModel(c.secondary, c.secondaryAtt, true)
   }, [classId, classes])
-  const st = useRef({ frame: 0, compiledAt: '', seenWorld: new WeakSet(), seenVm: new WeakSet(), finished: new WeakSet(), parked: 0, slow: 0, lastFps: 0 })
+  // Every other gun, queued behind them.
+  useEffect(() => {
+    for (const [id, att] of SHOWCASE_GUNS) prepareWeaponModel(id, att)
+  }, [])
+  const st = useRef({ frame: 0, compiledAt: '', seenWorld: new WeakSet(), seenVm: new WeakSet(), finished: new WeakSet(), parked: 0, parkAt: 0, slow: 0, lastFps: 0, gunsLeft: SHOWCASE_GUNS })
 
   // The world never moves: don't rebuild the scene root's matrix every frame
   // (it forces every object below it to recompute its own), and before each
@@ -161,6 +166,32 @@ export function PerfDirector() {
 
     if (s.frame % 10 === 5) finishPrograms(gl, s.finished)
 
+    // Park the showcase once the driver has the shaders just compiled for it
+    // ready: drawn any sooner, the draw waits for them (most of a second on
+    // some drivers). Never later than ~4 s after the warm-up.
+    if (s.parkAt && (s.frame - s.parkAt > 240 || programsReady(gl))) {
+      s.parkAt = 0
+      finishPrograms(gl, s.finished)
+      showcase.position.set(0, -12, 0)
+      scene.add(showcase)
+      showcase.updateMatrixWorld(true)
+      gl.shadowMap.needsUpdate = true
+      s.parked = 4
+    }
+
+    // Guns built since the last look join the showcase; once they're all in,
+    // the next warm-up below is a full one, so their shaders are ready too.
+    if (s.gunsLeft.length && s.frame % 30 === 17) {
+      s.gunsLeft = s.gunsLeft.filter(([id, att, lod]) => {
+        if (!hasWeaponModel(id, att)) return true
+        showcase.add(createWeaponModel(id, att))
+        const far = lod && createWeaponLod(id, att)
+        if (far) showcase.add(far)
+        return false
+      })
+      if (!s.gunsLeft.length) s.compiledAt = ''
+    }
+
     // Warm-up. Everything at once whenever what every shader depends on
     // changes (the reflection maps arriving, shadows on/off); in between, only
     // objects whose materials haven't been drawn yet (a player joining, a
@@ -176,13 +207,10 @@ export function PerfDirector() {
         if (vm) freshObjects(vm.scene, s.seenVm)
         warmUp(gl, scene, camera, showcase)
         // The shadow pass builds its own (depth) shaders, and only for things
-        // really in the scene: park the showcase under the map for a few frames
-        // so those are built now too, not when the first player turns up.
-        showcase.position.set(0, -12, 0)
-        scene.add(showcase)
-        showcase.updateMatrixWorld(true)
-        gl.shadowMap.needsUpdate = true
-        s.parked = 4
+        // really in the scene: the showcase gets parked under the map for a
+        // few frames (below) so those are built now too, not when the first
+        // player turns up.
+        s.parkAt = s.frame
       } else {
         const world = freshObjects(scene, s.seenWorld)
         const own = vm ? freshObjects(vm.scene, s.seenVm) : []
@@ -223,6 +251,9 @@ function finishPrograms(gl, finished) {
     program.getUniforms()
   }
 }
+
+/** True once the driver reports every compiled shader linked (asking doesn't block). */
+const programsReady = (gl) => (gl.info.programs ?? []).every((p) => p.isReady?.() !== false)
 
 /** Uploads the textures a set of materials draws with. */
 function initTextures(gl, materials) {

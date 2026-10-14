@@ -22,10 +22,24 @@ const SLOT_KEYS = ['primary', 'secondary', 'melee']
 const QUICK_KNIFE_DRAW = 0.1
 const QUICK_KNIFE_STOW = 0.14
 
-/** How much each shot blooms the cone; automatics bloom gently, everything else hard. */
+/** How much each shot blooms the cone, by gun family; automatics bloom gently, everything else hard. */
 const BLOOM = { ar: 0.0055, hornet: 0.007, smg: 0.006, lmg: 0.005 }
-/** Which suppressed sound each gun uses. */
+/** Which suppressed sound each gun family uses. */
 const QUIET_KIND = { sniper: 'sniper', ar: 'rifle', lmg: 'rifle', smg: 'pistol', shotgun: 'rifle' }
+/** Seconds the hands are busy planting a claymore, and on the detonator. */
+const PLANT_TIME = 0.75
+const DETONATE_TIME = 0.4
+
+/** Is one of my C4 charges out in the world right now? */
+function myChargeOut(kind) {
+  const room = net.room
+  if (!room) return false
+  let out = false
+  room.state.grenades?.forEach((g) => {
+    if (g.kind === kind && g.owner === room.sessionId) out = true
+  })
+  return out
+}
 
 /** Enemies whose hitboxes the local player can hit, at their rendered positions. */
 function* enemyTargets() {
@@ -56,7 +70,8 @@ export class WeaponSystem {
       const w = this.weaponFor(id)
       this.ammo[id] = { mag: w.magSize, reserve: w.reserve }
     }
-    this.lethal = EQUIPMENT.frag.count
+    this.lethalKind = EQUIPMENT[this.cls.lethal] ? this.cls.lethal : 'frag'
+    this.lethal = EQUIPMENT[this.lethalKind].count
     this.tacticalKind = this.cls.tactical
     this.tactical = EQUIPMENT[this.cls.tactical].count
     if (ammo) this.applyAmmo(ammo)
@@ -77,6 +92,9 @@ export class WeaponSystem {
     this.meleeHitAt = 0
     this.meleeTarget = null
     this.throwStart = -10
+    this.plantStart = -10
+    this.detonateStart = -10
+    this.burstLeft = 0
     this.cookStart = 0
     this.cooking = false
     this.breath = { holding: false, left: 3, cooldownUntil: 0 }
@@ -231,7 +249,7 @@ export class WeaponSystem {
   }
 
   shotSound(w) {
-    if (w.quiet) sfx.play('suppressed', { kind: QUIET_KIND[w.id] ?? 'pistol' })
+    if (w.quiet) sfx.play('suppressed', { kind: QUIET_KIND[w.base] ?? 'pistol' })
     else sfx.play(w.id, { volume: 0.9 })
     // The last quarter of a mag rings hollow under each shot: time to reload.
     const left = this.ammo[w.id]?.mag ?? 0
@@ -243,8 +261,9 @@ export class WeaponSystem {
     const k = (1 - this.ads * 0.35) * (ctx.prone ? 0.7 : ctx.crouch ? 0.88 : 1)
     runtime.view.recoilPitch += w.recoil.vertical * k * (0.85 + Math.random() * 0.3)
     runtime.view.recoilYaw += (Math.random() - 0.5) * 2 * w.recoil.horizontal * k
-    this.bloom = Math.min(0.07, this.bloom + (BLOOM[w.id] ?? 0.012))
-    if (w.id === 'sniper' || w.id === 'shotgun') runtime.view.shake = Math.min(1, runtime.view.shake + 0.25)
+    this.bloom = Math.min(0.07, this.bloom + (BLOOM[w.base] ?? 0.012))
+    // Heavy rounds shake the view: a sniper or a shotgun's blast, more for the big ones.
+    if (w.category === 'sniper' || w.category === 'shotgun' || w.id === 'dragoon') runtime.view.shake = Math.min(1, runtime.view.shake + (w.damage.chest >= 110 ? 0.4 : 0.25))
     if (w.id === 'rpg') runtime.view.shake = Math.min(1, runtime.view.shake + 0.45)
     if (w.fireMode !== 'auto') this.semiArmed = false
   }
@@ -356,14 +375,34 @@ export class WeaponSystem {
       d: [_fwd.x, _fwd.y, _fwd.z],
       cook,
     })
-    if (kind === 'frag') this.lethal -= 1
+    if (kind === this.lethalKind) this.lethal -= 1
     else this.tactical -= 1
     this.throwStart = now
     this.lastThrowKind = kind
-    // Tactical grenades are thrown straight off the button: pull their pin now.
-    if (kind !== 'frag') sfx.play('pin', { volume: 0.7 })
+    // Anything but a cooked frag is thrown straight off the button: pull its
+    // pin (or arm it) now.
+    if (kind === 'semtex') sfx.play('beep', { volume: 0.5 })
+    else if (kind !== 'frag' && kind !== 'c4') sfx.play('pin', { volume: 0.7 })
     this.cancelReload()
-    sfx.play('throw', { volume: 0.8 })
+    sfx.play('throw', { volume: kind === 'c4' ? 0.6 : 0.8 })
+  }
+
+  /** A claymore set down in front of you (the server works out exactly where). */
+  plantClaymore(now) {
+    net.send('th', { k: 'claymore' })
+    this.lethal -= 1
+    this.plantStart = now
+    this.lastThrowKind = 'claymore'
+    this.cancelReload()
+    sfx.play('plant', { volume: 0.8 })
+  }
+
+  /** The detonator: every C4 of yours that's out goes off. */
+  detonate(now) {
+    net.send('det', {})
+    this.detonateStart = now
+    this.cancelReload()
+    sfx.play('detClick', { volume: 0.9 })
   }
 
   /* ---- per frame --------------------------------------------------------- */
@@ -403,7 +442,7 @@ export class WeaponSystem {
       if (wasPressed('quickMelee')) this.startMelee(now, ctx)
     }
 
-    const busyThrow = now - this.throwStart < 0.45
+    const busyThrow = now - this.throwStart < 0.45 || now - this.plantStart < PLANT_TIME || now - this.detonateStart < DETONATE_TIME
     // Quick knife put away: the gun comes back up.
     if (this.quickKnife && now >= this.quickKnife.end) {
       this.quickKnife = null
@@ -420,12 +459,20 @@ export class WeaponSystem {
       if (this.meleeTarget) sfx.play('knifeHit', { volume: 0.95 })
     }
 
-    // --- Grenades: G cooks while held, Q throws the tactical ------------------
-    if (canAct && wasPressed('lethal') && this.lethal > 0 && !this.cooking && !busyThrow) {
-      this.cooking = true
-      this.cookStart = now
-      this.cancelReload()
-      sfx.play('pin', { volume: 0.9 })
+    // --- Lethal (G): a frag cooks while held; Semtex and C4 are thrown off the
+    // press, a claymore set down; with a C4 out, G is the detonator. Q throws
+    // the tactical. ------------------------------------------------------------
+    this.c4Out = this.lethalKind === 'c4' && myChargeOut('c4')
+    if (canAct && wasPressed('lethal') && !this.cooking && !busyThrow) {
+      const kind = this.lethalKind
+      if (this.c4Out) this.detonate(now)
+      else if (this.lethal > 0 && kind === 'frag') {
+        this.cooking = true
+        this.cookStart = now
+        this.cancelReload()
+        sfx.play('pin', { volume: 0.9 })
+      } else if (this.lethal > 0 && kind === 'claymore') this.plantClaymore(now)
+      else if (this.lethal > 0) this.throwGrenade(kind, now, ctx)
     }
     if (this.cooking) {
       const cooked = now - this.cookStart
@@ -477,7 +524,17 @@ export class WeaponSystem {
       this.startReload(now)
     }
     const ready = canAct && !switching && !meleeing && !busyThrow && !this.cooking && !this.reloading && !ctx.sprinting && !ctx.lowered
-    if (ready && input.mouse.left && now >= this.nextFireAt) {
+    if (w.fireMode === 'burst') {
+      // A pull fires the whole burst (let go or not); then a pause, and a
+      // fresh pull for the next.
+      if (!ready) this.burstLeft = 0
+      else if (this.burstLeft > 0 && now >= this.nextFireAt) {
+        this.burstLeft = this.fire(now, ctx) ? this.burstLeft - 1 : 0
+        if (this.burstLeft === 0) this.nextFireAt = now + w.burstDelay
+      } else if (this.burstLeft === 0 && input.mouse.left && this.semiArmed && now >= this.nextFireAt) {
+        this.burstLeft = this.fire(now, ctx) ? w.burst - 1 : 0
+      }
+    } else if (ready && input.mouse.left && now >= this.nextFireAt) {
       if (w.fireMode === 'melee') {
         if (input.mouse.leftPressed) this.startMelee(now, ctx)
       } else if (w.fireMode === 'auto' || this.semiArmed) {
@@ -546,6 +603,12 @@ export class WeaponSystem {
       /** Seconds since the pin was pulled on a cooking frag (0 when not cooking). */
       cookTime: this.cooking ? now - this.cookStart : 0,
       grenadeKind: this.cooking ? 'frag' : now - this.throwStart < 0.45 ? this.lastThrowKind ?? 'frag' : 'frag',
+      /** Claymore going down: 0..1, or -1. */
+      plant: now - this.plantStart < PLANT_TIME ? (now - this.plantStart) / PLANT_TIME : -1,
+      /** Thumb on the detonator: 0..1, or -1. */
+      detonate: now - this.detonateStart < DETONATE_TIME ? (now - this.detonateStart) / DETONATE_TIME : -1,
+      /** A C4 is out: the detonator rides in the off hand. */
+      c4Out: this.c4Out,
       bolt: (w.fireMode === 'bolt' || w.fireMode === 'pump') && now < this.boltUntil ? 1 - (this.boltUntil - now) / w.fireInterval : -1,
       // Shotgun reload: 0..1 through the current shell's insert, or -1.
       shell: this.shellPhase(w, now),
@@ -572,6 +635,8 @@ export class WeaponSystem {
       mag: a ? a.mag : -1,
       reserve: a ? a.reserve : -1,
       lethal: this.lethal,
+      lethalKind: this.lethalKind,
+      c4Out: this.c4Out,
       tactical: this.tactical,
       tacticalKind: this.tacticalKind,
       reloading: this.reloading,

@@ -871,6 +871,10 @@
 .dl-equip .item.empty {
   opacity: 0.3;
 }
+.dl-equip .item.armed {
+  color: var(--accent);
+  animation: dl-pulse 1.2s ease-in-out infinite;
+}
 .dl-equip .key {
   font-size: 10px;
   color: var(--muted);
@@ -1561,6 +1565,538 @@
 }
 .dl-list .dl-btn .meta {
   text-align: right;
+}
+
+/* ---------------------------------------------------------------------------
+ * Create-a-class: a step per choice (main panel) beside a preview that stays
+ * put (side panel)
+ * ------------------------------------------------------------------------- */
+
+.dl-cc {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: 18px;
+  min-height: 0;
+}
+.dl-cc-main {
+  padding: 16px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dl-cc-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  animation: dl-fade-in 220ms ease-out both;
+}
+.dl-cc-side {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dl-cc-side .dl-preview {
+  flex: none;
+  height: 190px;
+  min-height: 0;
+}
+.dl-cc-name .dl-h {
+  font-size: 24px;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+.dl-cc-name .desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin-top: 4px;
+}
+.dl-cc-side .dl-stats {
+  gap: 7px;
+}
+.dl-cc-side .dl-stat {
+  grid-template-columns: 82px 1fr 30px;
+}
+.dl-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+}
+.dl-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+.dl-facts .dl-label {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+}
+.dl-facts b {
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+}
+.dl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.dl-chip {
+  font-family: var(--head);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 2px 7px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+}
+.dl-chip.accent {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+.dl-cc .dl-tag {
+  color: var(--accent);
+  font-size: 10px;
+  margin-left: 10px;
+  padding: 1px 5px;
+}
+
+/* Breadcrumb + step heading */
+.dl-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-family: var(--head);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.dl-crumbs button {
+  pointer-events: auto;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 2px;
+  color: var(--muted);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  transition: color var(--fast);
+}
+.dl-crumbs button:hover:not(:disabled) {
+  color: var(--accent);
+}
+.dl-crumbs button:disabled {
+  color: var(--text);
+  cursor: default;
+}
+.dl-crumbs .sep {
+  color: var(--accent);
+  opacity: 0.7;
+}
+.dl-cc-step {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dl-cc-step h2 {
+  font-size: 26px;
+  line-height: 1.05;
+  margin-top: 2px;
+}
+.dl-cc-step .hint {
+  max-width: 260px;
+  font-size: 12px;
+  text-align: right;
+}
+.dl-cc-step .actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Cards: every choice is a button laid out as a card. */
+.dl-wslot,
+.dl-eslot,
+.dl-cat,
+.dl-gun,
+.dl-gear {
+  font-family: var(--body);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.dl-wslot .n,
+.dl-eslot .n,
+.dl-cat .n,
+.dl-gun .n,
+.dl-gear .n {
+  font-family: var(--head);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.dl-wslot .ico,
+.dl-eslot .ico,
+.dl-cat .ico,
+.dl-gun .ico,
+.dl-gear .ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.dl-cc .dl-btn.selected .ico {
+  color: var(--accent);
+}
+/* Big cards slide a touch instead of growing (a 3% grow is a lot on a wide card). */
+.dl-wslot:hover:not(:disabled),
+.dl-gun:hover:not(:disabled),
+.dl-gear:hover:not(:disabled) {
+  transform: translateX(3px);
+}
+.dl-cat:hover:not(:disabled),
+.dl-eslot:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.dl-wslot.locked,
+.dl-eslot.locked {
+  cursor: default;
+}
+.dl-wslot.locked:hover,
+.dl-eslot.locked:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--line);
+}
+.dl-cc .go {
+  font-family: var(--head);
+  font-size: 30px;
+  line-height: 1;
+  color: var(--muted);
+  transition:
+    color var(--fast),
+    transform var(--fast);
+}
+.dl-cc .dl-btn:hover:not(:disabled) .go {
+  color: var(--accent);
+  transform: translateX(3px);
+}
+
+/* Overview */
+.dl-cc-overview {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 18px;
+  min-height: 0;
+}
+.dl-cc-classes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.dl-cc-classes .dl-list {
+  gap: 6px;
+}
+.dl-cc-classes .dl-btn {
+  flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  font-size: 14px;
+  padding: 7px 12px;
+}
+.dl-cc-classes .dl-btn .meta {
+  text-align: left;
+}
+.dl-cc-loadout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.dl-cc-note {
+  font-size: 12px;
+}
+.dl-wslot {
+  display: grid;
+  grid-template-columns: 210px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 116px;
+  padding: 10px 16px;
+  background:
+    linear-gradient(90deg, rgba(242, 163, 58, 0.07), transparent 45%),
+    rgba(14, 16, 20, 0.85);
+}
+.dl-wslot .ico {
+  height: 84px;
+  padding-right: 14px;
+  border-right: 1px solid var(--line);
+}
+.dl-wslot .txt,
+.dl-gun .txt,
+.dl-gear .txt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.dl-wslot .n {
+  font-size: 24px;
+}
+.dl-eslots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.dl-eslot {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-areas:
+    'l l'
+    'i n'
+    'i c';
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 1px;
+  min-height: 96px;
+  padding: 10px 12px;
+}
+.dl-eslot .dl-label {
+  grid-area: l;
+  margin-bottom: 6px;
+}
+.dl-eslot .ico {
+  grid-area: i;
+}
+.dl-eslot .n {
+  grid-area: n;
+  font-size: 16px;
+}
+.dl-eslot .c {
+  grid-area: c;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Categories */
+.dl-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.dl-cat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 170px;
+  padding: 12px 14px 14px;
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(242, 163, 58, 0.09), transparent 70%),
+    rgba(14, 16, 20, 0.85);
+}
+.dl-cat .top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+.dl-cat .ico {
+  flex: 1;
+  min-height: 66px;
+}
+.dl-cat .n {
+  font-size: 19px;
+}
+.dl-cat .c {
+  font-size: 10.5px;
+  line-height: 1.4;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+
+/* Guns in a category */
+.dl-gun-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dl-gun {
+  display: grid;
+  grid-template-columns: 160px 1fr 150px 16px;
+  align-items: center;
+  gap: 16px;
+  padding: 7px 14px;
+}
+.dl-gun .ico {
+  height: 50px;
+}
+.dl-gun .txt {
+  gap: 3px;
+}
+.dl-gun .n,
+.dl-gear .n {
+  display: flex;
+  align-items: center;
+  font-size: 19px;
+}
+.dl-gun .k {
+  font-family: var(--head);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.dl-gun .d,
+.dl-gear .d {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.dl-gun .d {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dl-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dl-mini .row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.dl-mini .l {
+  font-family: var(--head);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.dl-mini .bar {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.dl-mini .bar span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text);
+  opacity: 0.8;
+}
+.dl-gun.selected .dl-mini .bar span {
+  background: var(--accent);
+}
+
+/* Attachments */
+.dl-cc .dl-att-row {
+  grid-template-columns: 96px 1fr;
+}
+.dl-cc .dl-att {
+  min-width: 130px;
+  padding: 6px 10px 7px;
+}
+.dl-cc .dl-att .d {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.dl-att .fx {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin-top: 5px;
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.dl-att .fx .up {
+  color: var(--good);
+}
+.dl-att .fx .down {
+  color: var(--bad);
+}
+
+/* Lethal / tactical */
+.dl-gear-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dl-gear {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 92px;
+  padding: 14px 16px;
+}
+.dl-gear .c {
+  align-self: flex-start;
+  font-family: var(--head);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+@container (max-width: 900px) {
+  .dl-cc {
+    grid-template-columns: 1fr;
+    align-content: start;
+    overflow-y: auto;
+  }
+  .dl-cc-main,
+  .dl-cc-side {
+    overflow: visible;
+  }
+  .dl-cc-overview {
+    grid-template-columns: 1fr;
+  }
+  .dl-cc-classes .dl-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .dl-cat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .dl-gun {
+    grid-template-columns: 130px 1fr 16px;
+  }
+  .dl-gun .dl-mini {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------

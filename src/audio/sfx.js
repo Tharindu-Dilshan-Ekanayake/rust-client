@@ -11,6 +11,7 @@
  * sounds muffled); UI sounds are not.
  */
 
+import { WEAPONS } from '../shared/weapons.js'
 import { buildBank } from './bank.js'
 import { renderMusic } from './music.js'
 
@@ -539,6 +540,14 @@ const SOUNDS = {
  */
 export function play(name, opts) {
   if (!ensure() || ctx.state !== 'running') return
+  // A gun without a voice of its own speaks with its family's, pitched and
+  // weighted for it (a Volk is a deeper, heavier VX-7).
+  const gun = WEAPONS[name]
+  if (gun && !GUNS.has(name)) {
+    const voice = gun.sound?.base ?? gun.base
+    opts = { ...opts, rate: (opts?.rate ?? 1) * (gun.sound?.rate ?? 1), volume: (opts?.volume ?? 1) * (gun.sound?.gain ?? 1) }
+    name = voice
+  }
   const sequence = SEQUENCES[name]
   if (sequence && bank) {
     playSequence(sequence.map(([at, n]) => [at, n]), opts)

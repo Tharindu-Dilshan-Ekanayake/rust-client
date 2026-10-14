@@ -16,6 +16,8 @@
  * A render returns a Float32Array (mono) or [left, right] (stereo).
  */
 
+import { baseOf } from '../shared/weapons.js'
+
 const SR = 44100
 /** Sample rate the bank is rendered at (AudioBuffers resample on playback). */
 export const BANK_SAMPLE_RATE = SR
@@ -553,6 +555,38 @@ function grains(out, rand, start, span, count, lo, hi, gain) {
 }
 
 const FOLEY = {
+  beep: () => {
+    // An explosive's arming tick: a short, hard-edged electronic chirp.
+    const o = buf(0.09)
+    toneLayer(o, { dur: 0.07, tau: 0.05, att: 0.0015, from: 2850, gain: 0.55, wave: 'tri' })
+    toneLayer(o, { dur: 0.07, tau: 0.05, att: 0.0015, from: 5700, gain: 0.12 })
+    return o
+  },
+  plant: (r) => {
+    // A charge set down: cloth and webbing, the legs biting into dirt, a plastic knock.
+    const o = buf(0.42)
+    friction(o, r, { dur: 0.12, from: 900, to: 2400, rate: 90, gain: 0.35, q: 1.4 })
+    grains(o, r, 0.1, 0.08, 14, 1800, 5200, 0.22)
+    body(o, r, 0.16, 420, 1.6, 0.02, 0.55)
+    contact(o, r, 0.17, 0.4, 3200)
+    return o
+  },
+  detClick: (r) => {
+    // The detonator: the safety flipped, then the button pressed home.
+    const o = buf(0.2)
+    contact(o, r, 0, 0.45, 4200)
+    steel(o, r, 0.002, 3100, 0.012, 0.3)
+    contact(o, r, 0.085, 0.7, 3600)
+    body(o, r, 0.086, 1800, 3, 0.006, 0.25)
+    return o
+  },
+  stick: (r) => {
+    // A sticky charge slapping onto a surface: a wet thump.
+    const o = buf(0.25)
+    body(o, r, 0, 260, 1.1, 0.025, 0.7)
+    friction(o, r, { dur: 0.05, from: 600, to: 1500, rate: 60, gain: 0.3, q: 1.2 })
+    return o
+  },
   magRelease: (r) => {
     // Thumb on the release button, then the catch letting go of the mag.
     const o = buf(0.14)
@@ -1402,7 +1436,7 @@ export const reloadFoley = (weaponId, empty, duration = 0, shell = null) => {
     if (empty) events.push([Math.max(0, 1 - 0.27 / duration), 'pumpBack'], [Math.max(0, 1 - 0.12 / duration), 'pumpForward'])
     return events
   }
-  const f = RELOAD_FOLEY[weaponId]
+  const f = RELOAD_FOLEY[weaponId] ?? RELOAD_FOLEY[baseOf(weaponId)]
   if (!f) return []
   const list = (empty && f.empty) || f.tactical
   // Leads are in seconds: without a duration, fall back to a typical reload.

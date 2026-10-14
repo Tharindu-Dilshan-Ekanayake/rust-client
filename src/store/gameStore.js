@@ -40,7 +40,7 @@ function write(key, value) {
 
 const customId = (i) => `custom-${i + 1}`
 
-/** The fields a stored class keeps (sanitizeClass adds melee/lethal itself). */
+/** The fields a stored class keeps (sanitizeClass adds melee itself). */
 function storedClass(id, clean, preset = false) {
   return {
     id,
@@ -49,6 +49,7 @@ function storedClass(id, clean, preset = false) {
     primaryAtt: clean.primaryAtt,
     secondary: clean.secondary,
     secondaryAtt: clean.secondaryAtt,
+    lethal: clean.lethal,
     tactical: clean.tactical,
     preset,
   }
@@ -56,20 +57,21 @@ function storedClass(id, clean, preset = false) {
 
 /** Fresh custom classes start as a spread of the arsenal. */
 const DEFAULT_KITS = [
-  ['ar', 'pistol'],
-  ['smg', 'hornet'],
-  ['shotgun', 'viper'],
-  ['sniper', 'pistol'],
-  ['lmg', 'rpg'],
+  ['ar', 'pistol', 'frag'],
+  ['smg', 'hornet', 'semtex'],
+  ['shotgun', 'viper', 'c4'],
+  ['sniper', 'colonel', 'claymore'],
+  ['lmg', 'rpg', 'frag'],
 ]
 
 function defaultCustom(i) {
-  const [primary, secondary] = DEFAULT_KITS[i % DEFAULT_KITS.length]
+  const [primary, secondary, lethal] = DEFAULT_KITS[i % DEFAULT_KITS.length]
   const clean = sanitizeClass({
     name: `CLASS ${i + 1}`,
     primary,
     primaryAtt: { optic: 'reddot' },
     secondary,
+    lethal,
     tactical: i % 2 === 0 ? 'flash' : 'smoke',
   })
   return storedClass(customId(i), clean)
@@ -132,6 +134,7 @@ export const toWireClass = (c) =>
         primaryAtt: c.primaryAtt,
         secondary: c.secondary,
         secondaryAtt: c.secondaryAtt,
+        lethal: c.lethal,
         tactical: c.tactical,
       }
     : null
@@ -212,6 +215,9 @@ export const useGameStore = create((set, get) => ({
     mag: 0,
     reserve: 0,
     lethal: 0,
+    lethalKind: 'frag',
+    /** A C4 of ours is out: the lethal button detonates it. */
+    c4Out: false,
     tactical: 0,
     tacticalKind: 'flash',
     reloading: false,

@@ -76,10 +76,18 @@ function AmmoBox() {
         </div>
       )}
       <div className="dl-equip">
-        <div className={`item ${hud.lethal > 0 ? '' : 'empty'}`}>
-          <span className="key">G</span>
-          <Icon name="frag" height={16} />×{hud.lethal}
-        </div>
+        {hud.c4Out ? (
+          <div className="item armed">
+            <span className="key">G</span>
+            <Icon name="detonator" height={16} />
+            Detonate
+          </div>
+        ) : (
+          <div className={`item ${hud.lethal > 0 ? '' : 'empty'}`}>
+            <span className="key">G</span>
+            <Icon name={hud.lethalKind} height={16} />×{hud.lethal}
+          </div>
+        )}
         <div className={`item ${hud.tactical > 0 ? '' : 'empty'}`}>
           <span className="key">Q</span>
           <Icon name={hud.tacticalKind} height={16} />×{hud.tactical}
