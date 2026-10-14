@@ -153,7 +153,8 @@ function PrivatePanel() {
   const [size, setSize] = useState(MAX_PLAYERS)
   const [bots, setBots] = useState(true)
   const [code, setCode] = useState('')
-  const mapName = useGameStore((s) => MAPS[s.mapChoice]?.name ?? '')
+  // The short name: the full one is on the picker right above.
+  const mapName = useGameStore((s) => MAPS[s.mapChoice]?.short ?? MAPS[s.mapChoice]?.name ?? '')
   const ready = code.length === ROOM_CODE_LENGTH
   const join = () => ready && net.joinByCode(code)
   const sizeLabel = (n) => (isTeamMode(mode) ? `${n / 2}v${n / 2}` : `${n}`)

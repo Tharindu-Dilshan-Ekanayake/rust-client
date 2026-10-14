@@ -12,7 +12,23 @@ export function drawMapPlan(map, size) {
   ctx.fillStyle = 'rgba(214,160,106,0.10)'
   ctx.fillRect(tx(-half), tx(-half), half * 2 * scale, half * 2 * scale)
   for (const col of map.colliders()) {
-    if (col.shape === 'box') {
+    if (col.shape === 'mesh') {
+      // Ground that isn't flat: shade what's sunk below it (a creek's ditch).
+      const v = col.vertices
+      const ix = col.indices
+      // One path for every sunk triangle (all wound alike), filled once: no seams.
+      ctx.fillStyle = 'rgba(20,24,22,0.28)'
+      ctx.beginPath()
+      for (let i = 0; i < ix.length; i += 3) {
+        const [a, b, c] = [ix[i] * 3, ix[i + 1] * 3, ix[i + 2] * 3]
+        if (v[a + 1] + v[b + 1] + v[c + 1] > -0.9) continue
+        ctx.moveTo(tx(v[a]), tx(v[a + 2]))
+        ctx.lineTo(tx(v[b]), tx(v[b + 2]))
+        ctx.lineTo(tx(v[c]), tx(v[c + 2]))
+        ctx.closePath()
+      }
+      ctx.fill()
+    } else if (col.shape === 'box') {
       if (col.half[0] > 20 || col.half[2] > 20) continue
       const top = col.p[1] + col.half[1]
       ctx.fillStyle = top > 2.2 ? 'rgba(232,230,225,0.55)' : 'rgba(232,230,225,0.28)'

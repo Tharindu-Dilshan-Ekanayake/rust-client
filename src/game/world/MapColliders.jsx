@@ -16,7 +16,9 @@ export function MapColliders({ colliders }) {
       const desc =
         c.shape === 'box'
           ? rapier.ColliderDesc.cuboid(c.half[0], c.half[1], c.half[2])
-          : rapier.ColliderDesc.cylinder(c.halfHeight, c.r)
+          : c.shape === 'mesh'
+            ? rapier.ColliderDesc.trimesh(c.vertices, c.indices)
+            : rapier.ColliderDesc.cylinder(c.halfHeight, c.r)
       desc
         .setTranslation(c.p[0], c.p[1], c.p[2])
         .setRotation({ x: c.q[0], y: c.q[1], z: c.q[2], w: c.q[3] })

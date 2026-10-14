@@ -15,7 +15,9 @@ export const STORM_WIND = [7.2, 0, 3.2]
  * moon (the "sun" here) high over the church, cold blue light and long
  * shadows, the warm glow of the town's lamps and pumpkins coming from below;
  * Old Quarter a clear, hot afternoon: no haze, no dust, no vignette or grain,
- * just strong sun and clean colour.
+ * just strong sun and clean colour; Bramblewood a soft, bright day under high
+ * cloud, lush greens, a little depth haze over the field and nothing laid
+ * over the picture.
  */
 export const ENVIRONMENTS = {
   dustline: {
@@ -146,6 +148,36 @@ ENVIRONMENTS.quarter = {
     saturation: 1.04,
     shadowTint: [0, 0, 0],
     highlightTint: [0, 0, 0],
+    vignette: 0,
+    bleach: 0,
+    grain: 0,
+    dust: [0, 0, 0],
+    lift: 0,
+  },
+}
+
+ENVIRONMENTS.bramble = {
+  sunDir: new Vector3(0.42, 0.68, 0.46).normalize(),
+  fog: '#c8d2cc',
+  fogNear: 70,
+  fogFar: 320,
+  sky: { horizon: '#d4dcd8', mid: '#a9bfcf', zenith: '#6a8cb0', sun: '#fff2dc', storm: 0, below: [0.4, 0.46, 0.32] },
+  hemi: ['#dde8ee', '#46582e', 0.95],
+  bounce: ['#c4d6b4', 0.5],
+  ambient: ['#6e7862', 0.32],
+  sun: ['#fff0d6', 2.6],
+  envIntensity: 0.6,
+  storm: false,
+  shadowSpan: 64,
+  menuCam: { radius: 56, height: 21, look: [4, 3, -6] },
+  vm: { ambient: ['#76806e', 0.35], hemi: ['#eef2f6', '#46502e', 0.7], sun: ['#fff0d6', 1.15] },
+  // Clean like Old Quarter's: no vignette, grain or dust; a touch more green.
+  grade: {
+    exposure: 1.03,
+    contrast: 1.06,
+    saturation: 1.08,
+    shadowTint: [-0.006, 0.006, 0.004],
+    highlightTint: [0.012, 0.01, -0.006],
     vignette: 0,
     bleach: 0,
     grain: 0,

@@ -2,7 +2,7 @@
 
 **Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
 with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch,
-Free-for-all or [Search & Destroy](#search--destroy), on five maps (picked on
+Free-for-all or [Search & Destroy](#search--destroy), on six maps (picked on
 the *Find a match* screen, see [Maps](#maps)).
 
 *Atomic Acres* (84 × 84 m, the default) is a 1950s test-site suburb. A school
@@ -48,15 +48,40 @@ the screen; suppressed shots are quiet and never show on enemy minimaps.
 
 Each map is data in `shared/` (`map.js` for Dustline, `mapAcres.js` for
 Atomic Acres, `mapPalmwood.js` for Palmwood, `mapHollow.js` for Hollow Creek,
-`mapQuarter.js` for Old Quarter, helpers in `mapKit.js`), listed in
+`mapQuarter.js` for Old Quarter, `mapBramble.js` for Bramblewood, helpers in
+`mapKit.js`), listed in
 `shared/maps.js`: its colliders, ladders, spawns, resupply crates, bot
 navigation hints and bounds. The client draws the map on screen
 (`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/`,
-`world/palmwood/`, `world/hollow/` or `world/quarter/`) with that map's sky and light
+`world/palmwood/`, `world/hollow/`, `world/quarter/` or `world/bramble/`) with that map's sky and light
 (`game/environment.js`) and sound (`game/ambience.js`); the minimap, ladders,
 effects and menu camera all follow the active map.
 
-- **Old Quarter** (80 × 80 m, the newest): sun-baked backstreets round a
+- **Bramblewood** (104 × 104 m, the newest and the biggest): an abandoned
+  farm town the woods have taken back, made for long sightlines. North-east, a
+  big field of old furrows and round hay bales with a tractor left in it, the
+  water tower beside it (one ladder up to its deck, the best view of the field)
+  and the barn on its corner (a hayloft up stairs inside its east wall, its
+  north window over the field). A dried-up creek cuts right across the middle:
+  a ditch 10 m wide and 1.5 m deep, its bed cracked mud with puddles here and
+  there, reeds, stones and fallen logs; drop in anywhere and use it as a
+  trench. The farm track crosses it on a concrete bridge and the path from the
+  meadow on a covered boardwalk, and you can crouch under both (not stand).
+  West, Alpha's side, the brick farmhouse; in the middle a roofless ruin and a
+  burnt-out tank still burning on the track; east, Bravo's side, the barn.
+  Along the dirt road to the south, a row of houses, a tin garage and their
+  backyards. Ivy on the walls and poles, tall grass, ferns and bushes in every
+  corner, ~90 trees. No team spawn can see the other's.
+  - The ground is a triangle mesh (`brambleGround()`, the `mesh` collider
+    shape in `mapKit.js`) that the physics and the renderer share, so players,
+    bullets, grenades and bots all know the ditch. Bots' ground links may
+    climb its banks (`nav.climb`), so they cross where they like.
+  - The houses and the barn are Atomic Acres' description, the sheds Palmwood's.
+  - Every leaf (trees, bushes, ferns, grass, ivy) is a card in one atlas, so
+    they are all one material: crossed cards lit as a canopy from both sides
+    (two-sided cards would otherwise light their backs as if they faced the
+    ground), fading out as they turn edge-on.
+- **Old Quarter** (80 × 80 m): sun-baked backstreets round a
   building site. In the middle stands the Skeleton, an unfinished three-level
   concrete frame: block walls going up on the ground floor, scaffolding on its
   south face, stud frames and rebar on the open top; concrete stairs up its
@@ -110,9 +135,12 @@ effects and menu camera all follow the active map.
   shacks, two lookout towers, banana groves and coconut palms. No team spawn
   can see the other's (checked eye to eye).
 
-- The map picked in *Find a match* is saved and shown behind the menus. Quick
-  play only matches rooms on that map; a private room opens on it; joining by key
-  puts you on the room's map, whatever you had picked.
+- The map picked in *Find a match* (or on the main menu's map card) is saved
+  and shown behind the menus. Quick play only matches rooms on that map; a
+  private room opens on it; joining by key puts you on the room's map, whatever
+  you had picked. Both pickers show three maps and scroll through the rest
+  (wheel, swipe or arrows) under a count of how many there are, so more maps
+  never crowd the screen; the chosen one is always scrolled into view.
 - Atomic Acres houses (`HOUSES` in `mapAcres.js`) and Palmwood's buildings
   (`BUILDINGS` in `mapPalmwood.js`) are each built from one description: the
   same wall pieces make the colliders and the art, so every door, window,
@@ -419,6 +447,13 @@ Built to run smoothly on low-end PCs without hitches:
   halo doing the rest; mist sheets fade out before they reach the camera (a
   bank right in front of it filled the screen for nothing) and there are half
   as many on Low.
+- **Bramblewood** draws in ~55 calls on Low. Its cost is overdraw: alpha-tested
+  leaves turn off the GPU's early depth test, so every leaf behind another was
+  fully lit and then covered. Materials marked `userData.prepass` (its foliage)
+  are batched into two draws (`StaticBatcher`): depth only first, with the
+  same shader so it cuts the same holes, then lit, testing against that depth
+  without writing it. Only the front leaf is lit and nothing hidden behind the
+  leaves is drawn: about 15 % off the GPU time on the 780M, no extra shaders.
 - No z-fighting: ground layers sit centimetres apart with depth offsets
   (`acres.layer`), signs are offset from their boards, overlapping floors and
   slabs are cut apart before drawing, and the camera's near plane is 10 cm.
@@ -446,6 +481,13 @@ slower; Atomic Acres the same day, for scale:
 | Hollow Creek, High | 64 FPS | 112 FPS |
 | Old Quarter, Low | 100 FPS (Acres 79) | 183 FPS |
 | Old Quarter, High | 78 FPS | 131 FPS |
+
+Bramblewood, later again (Old Quarter the same day, for scale):
+
+| | Radeon 780M (integrated) | RTX 5050 Laptop |
+|---|---|---|
+| Bramblewood, Low | 71 FPS (Old Quarter 81) | 158 FPS |
+| Bramblewood, High | 55 FPS | 119 FPS |
 
 The longest frame in a 12 s fight went from 280–450 ms (shader first use) to
 under 50 ms on the 780M and under 17 ms on the RTX. Earlier: High went from ~51

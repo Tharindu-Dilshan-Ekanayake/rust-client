@@ -69,6 +69,38 @@ function tintedMaterial(key, mat) {
   return tinted.get(key)
 }
 
+/**
+ * Layered alpha-tested leaves (`userData.prepass`) are drawn twice: first
+ * depth only, before everything else (the same shader, so it cuts out exactly
+ * the same holes, nudged a hair deeper), then lit, after the rest, testing
+ * against that depth without writing it. Cut-outs turn off the GPU's early
+ * depth test, so in one pass every leaf behind another gets fully lit and then
+ * covered; this way only the front one is, and whatever's hidden behind the
+ * leaves isn't drawn either. The two share their program (only render state
+ * differs), so nothing more compiles.
+ */
+const depthPasses = new Map()
+const litPasses = new Map()
+function depthPassOf(mat) {
+  if (!depthPasses.has(mat)) {
+    const m = mat.clone()
+    m.colorWrite = false
+    m.polygonOffset = true
+    m.polygonOffsetFactor = 1
+    m.polygonOffsetUnits = 1
+    depthPasses.set(mat, m)
+  }
+  return depthPasses.get(mat)
+}
+function litPassOf(mat) {
+  if (!litPasses.has(mat)) {
+    const m = mat.clone()
+    m.depthWrite = false
+    litPasses.set(mat, m)
+  }
+  return litPasses.get(mat)
+}
+
 /** Bakes a material colour into a geometry's vertex colours. */
 function addTint(geo, color) {
   const n = geo.getAttribute('position').count
@@ -236,6 +268,15 @@ export function StaticBatcher({ children, cell = 64 }) {
       mesh.matrixAutoUpdate = false
       target.add(mesh)
       created.push(mesh)
+      if (mesh.material.userData.prepass) {
+        const pre = new Mesh(merged, depthPassOf(mesh.material))
+        pre.renderOrder = -1
+        pre.matrixAutoUpdate = false
+        target.add(pre)
+        created.push(pre)
+        mesh.material = litPassOf(mesh.material)
+        mesh.renderOrder = 1
+      }
       for (const src of items) {
         src.visible = false
         src.matrixAutoUpdate = false
