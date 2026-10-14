@@ -6,8 +6,9 @@ import DustlineMap from './DustlineMap.jsx'
 import HollowMap from './hollow/HollowMap.jsx'
 import PalmwoodMap from './palmwood/PalmwoodMap.jsx'
 import { prewarmOtherMaps } from './prewarm.js'
+import QuarterMap from './quarter/QuarterMap.jsx'
 
-const SCENES = { dustline: DustlineMap, acres: AcresMap, palmwood: PalmwoodMap, hollow: HollowMap }
+const SCENES = { dustline: DustlineMap, acres: AcresMap, palmwood: PalmwoodMap, hollow: HollowMap, quarter: QuarterMap }
 
 /**
  * The map on screen (the room's, or the one picked in the menus): its art and

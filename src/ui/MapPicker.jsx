@@ -5,15 +5,15 @@ import { useGameStore } from '../store/gameStore.js'
 import { drawMapPlan } from './mapPlan.js'
 import { uiClick, uiHover } from './uiUtils.js'
 
-/** One map to pick: its plan from above, name and size. */
-function MapTile({ id, on, onPick }) {
+/** One map to pick: its plan from above, name and size (the short name in the quick-play row, five across). */
+function MapTile({ id, on, onPick, compact }) {
   const map = MAPS[id]
   const plan = useMemo(() => drawMapPlan(map, 128).canvas.toDataURL(), [map])
   return (
-    <button type="button" role="radio" aria-checked={on} className={`dl-maptile ${on ? 'on' : ''}`} onMouseEnter={uiHover} onClick={onPick}>
+    <button type="button" role="radio" aria-checked={on} aria-label={map.name} title={map.name} className={`dl-maptile ${on ? 'on' : ''}`} onMouseEnter={uiHover} onClick={onPick}>
       <img src={plan} alt="" />
       <span className="text">
-        <strong>{map.name}</strong>
+        <strong>{compact ? map.name : map.short ?? map.name}</strong>
         <small>
           {map.tagline} · {map.size}
         </small>
@@ -37,6 +37,7 @@ export function MapPicker({ compact = false }) {
           key={id}
           id={id}
           on={choice === id}
+          compact={compact}
           onPick={() => {
             if (choice === id) return
             uiClick()

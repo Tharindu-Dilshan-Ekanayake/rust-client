@@ -2,7 +2,7 @@
 
 **Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
 with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch,
-Free-for-all or [Search & Destroy](#search--destroy), on four maps (picked on
+Free-for-all or [Search & Destroy](#search--destroy), on five maps (picked on
 the *Find a match* screen, see [Maps](#maps)).
 
 *Atomic Acres* (84 × 84 m, the default) is a 1950s test-site suburb. A school
@@ -48,14 +48,38 @@ the screen; suppressed shots are quiet and never show on enemy minimaps.
 
 Each map is data in `shared/` (`map.js` for Dustline, `mapAcres.js` for
 Atomic Acres, `mapPalmwood.js` for Palmwood, `mapHollow.js` for Hollow Creek,
-helpers in `mapKit.js`), listed in `shared/maps.js`: its colliders, ladders,
-spawns, resupply crates, bot navigation hints and bounds. The client draws the
-map on screen (`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/`,
-`world/palmwood/` or `world/hollow/`) with that map's sky and light
+`mapQuarter.js` for Old Quarter, helpers in `mapKit.js`), listed in
+`shared/maps.js`: its colliders, ladders, spawns, resupply crates, bot
+navigation hints and bounds. The client draws the map on screen
+(`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/`,
+`world/palmwood/`, `world/hollow/` or `world/quarter/`) with that map's sky and light
 (`game/environment.js`) and sound (`game/ambience.js`); the minimap, ladders,
 effects and menu camera all follow the active map.
 
-- **Hollow Creek** (80 × 80 m, the newest): a small town on Halloween night,
+- **Old Quarter** (80 × 80 m, the newest): sun-baked backstreets round a
+  building site. In the middle stands the Skeleton, an unfinished three-level
+  concrete frame: block walls going up on the ground floor, scaffolding on its
+  south face, stud frames and rebar on the open top; concrete stairs up its
+  east side (to the first floor, then on up to the top) and a ladder up its
+  west face. Round it the bulldozer, sand and gravel piles, pallets of blocks,
+  a cement mixer and the site container. North over the alley, the apartments:
+  balconies with square-pattern iron railings and a stairwell up to the roof;
+  north-west the teahouse, its roof reached by stairs in its courtyard;
+  north-east the workshop, a ladder up to its roof. West, Alpha's side: the
+  west house and tin shacks; east, Bravo's: the east block, stairs up its
+  outside to the first floor and the roof, and the pink house. Along Market
+  Street to the south the market hall, the courtyard house round its fountain
+  and two little houses by a car park. Power lines and cables everywhere,
+  palms in the yards, dry grass in the corners; no team spawn can see the
+  other's, and every spawn faces an open view.
+  - A clear, hot afternoon with nothing laid over the picture: no haze, dust,
+    vignette or grain (its colour grade is neutral).
+  - Its masonry buildings (`BLOCKS`) are any number of storeys from one
+    description: floors with their openings, slabs with stair holes, flat
+    roofs with parapets (walkable where stairs reach them), solid concrete
+    flights, landings, banisters and balconies; the shacks reuse Palmwood's.
+
+- **Hollow Creek** (80 × 80 m): a small town on Halloween night,
   under a full moon. A witch statue with a carved pumpkin for a head stirs a
   glowing cauldron on the roundabout in the middle; north of it the stone
   church (doors front, back and side; pews inside) with its bell tower and the
@@ -386,6 +410,9 @@ Built to run smoothly on low-end PCs without hitches:
   grass tufts, bushes) is a bent strip in one foliage atlas, so all the foliage
   is one material; plywood, tin and tarps batch whatever their tint; the loop is
   one strip whose texture follows the curve, so the wheel ruts do too.
+- **Old Quarter** draws in ~40 calls for the whole town: every stucco wall,
+  inside and out, whatever its colour, is one draw, every concrete slab, stair,
+  ledge and coping another; the dry grass and dead twigs are one atlas.
 - **Hollow Creek** draws in ~55 calls for the whole town. Rooms, ceilings
   and curtains glow the same colour in every house, so all the rooms are one
   draw and all the curtains another; the string-light bulbs (hundreds) are 20-face specks with the
@@ -417,6 +444,8 @@ slower; Atomic Acres the same day, for scale:
 |---|---|---|
 | Hollow Creek, Low | ~67 FPS (Acres 80) | 127 FPS (Acres 130) |
 | Hollow Creek, High | 64 FPS | 112 FPS |
+| Old Quarter, Low | 100 FPS (Acres 79) | 183 FPS |
+| Old Quarter, High | 78 FPS | 131 FPS |
 
 The longest frame in a 12 s fight went from 280–450 ms (shader first use) to
 under 50 ms on the 780M and under 17 ms on the RTX. Earlier: High went from ~51

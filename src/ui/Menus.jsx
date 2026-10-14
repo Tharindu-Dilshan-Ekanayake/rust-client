@@ -48,6 +48,15 @@ const MAP_TIPS = {
     ['The market stalls', ' have counters to shoot over.'],
     ['Banana leaves hide you,', ' but they won’t stop a bullet.'],
   ],
+  quarter: [
+    ['The Skeleton in the middle', ' has stairs up its east side to the first floor and on to the open top, and a ladder up its west face.'],
+    ['Get up on the roofs:', ' the apartments’ stairwell goes all the way up, and the east block’s stairs climb its outside.'],
+    ['The teahouse roof', ' is up the stairs in its courtyard; the workshop’s, up the ladder at its east end.'],
+    ['Balcony railings and the Skeleton’s stud frames', ' stop you, not bullets.'],
+    ['The container on Market Street', ' and the yard walls are solid cover. The tin fences round the building site too.'],
+    ['The teahouse courtyard and the car park', ' have ammo crates that refill everything.'],
+    ['Watch the balconies', ' over the north alley and round the courtyard house.'],
+  ],
   hollow: [
     ['Climb the burning watchtower', ' by the creek to see over the barn and the park. The ladder is the only way up.'],
     ['The barn has a hayloft.', ' The stairs run up the inside of its east wall.'],

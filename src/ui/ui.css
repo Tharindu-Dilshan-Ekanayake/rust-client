@@ -1705,33 +1705,33 @@
   color: #1a1206;
   background: var(--accent);
 }
-/* Quick play: the four maps side by side in one row, so the mode cards and
-   the class strip below them keep their room on a 720 px screen. */
+/* Quick play: the five maps side by side in one row, so the mode cards and
+   the class strip below them keep their room on a 720 px screen. The tiles
+   show the maps' short names, tight enough that the longest word of any
+   (PALMWOOD, DUSTLINE) fits a tile a fifth of the row wide. */
 .dl-mappick:not(.compact) {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-/* Tight enough that the longest word of any map name (PUMPSTATION) fits a
-   tile a quarter of the row wide. */
-.dl-mappick:not(.compact) .dl-maptile {
-  padding: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
+.dl-mappick:not(.compact) .dl-maptile {
+  padding: 7px;
+  gap: 7px;
+}
 .dl-mappick:not(.compact) .dl-maptile img {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
 }
 .dl-mappick:not(.compact) .dl-maptile strong {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-size: 14px;
-  letter-spacing: 0.6px;
+  font-size: 13.5px;
+  letter-spacing: 0.4px;
   line-height: 1.1;
   white-space: normal;
 }
 .dl-mappick:not(.compact) .dl-maptile small {
-  font-size: 11px;
+  font-size: 10.5px;
 }
 /* The tag sits on the thumbnail's corner, clear of a name on one line. */
 .dl-mappick:not(.compact) .dl-maptile .dl-tag.new {
@@ -1743,7 +1743,7 @@
 }
 @container (max-width: 640px) {
   .dl-mappick:not(.compact) {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 /* Stacked and smaller on the main menu's map card. */
