@@ -19,6 +19,7 @@ import {
 } from 'three'
 
 import { yawOffset } from '../../shared/mapKit.js'
+import { WEAPONS } from '../../shared/weapons.js'
 import { activeMap } from '../../store/gameStore.js'
 import { runtime } from '../runtime.js'
 import { materials } from '../world/materials.js'
@@ -317,8 +318,9 @@ export function Effects() {
           t.dist -= skip
         }
         t.age = 0
-        t.speed = weapon === 'sniper' ? 520 : 380
-        t.thick = weapon === 'sniper' ? 0.022 : 0.012
+        const heavy = WEAPONS[weapon]?.category === 'sniper'
+        t.speed = heavy ? 520 : 380
+        t.thick = heavy ? 0.022 : 0.012
         t.active = true
         t.mesh.visible = true
       },
@@ -372,7 +374,7 @@ export function Effects() {
         }
       },
       muzzle(point, weapon) {
-        flashLight(toArr(point), '#ffb35a', weapon === 'sniper' ? 26 : 14, 60, 9)
+        flashLight(toArr(point), '#ffb35a', WEAPONS[weapon]?.category === 'sniper' ? 26 : 14, 60, 9)
       },
       puff(point) {
         const p = toArr(point)

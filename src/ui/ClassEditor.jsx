@@ -1,5 +1,5 @@
 import { Canvas, useFrame } from '@react-three/fiber'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Box3, Group, Vector3 } from 'three'
 
 import { createWeaponModel } from '../game/models/weaponModels.js'
@@ -8,18 +8,24 @@ import {
   ATTACHMENT_SLOT_LABELS,
   ATTACHMENT_SLOTS,
   ATTACHMENTS,
+  CATEGORIES,
   effectiveWeapon,
   EQUIPMENT,
+  LETHAL_OPTIONS,
+  PRIMARY_CATEGORIES,
   PRIMARY_OPTIONS,
+  SECONDARY_CATEGORIES,
   SECONDARY_OPTIONS,
   TACTICAL_OPTIONS,
   WEAPONS,
+  weaponsIn,
 } from '../shared/weapons.js'
 import { rankInfo, RANKS } from '../shared/progression.js'
 import { useGameStore } from '../store/gameStore.js'
 import { Button, Icon } from './common.jsx'
 import { RankInsignia } from './RankInsignia.jsx'
-import { attachmentSummary } from './uiUtils.js'
+import { attachmentNames } from './uiUtils.js'
+import { prepareWeaponIcons } from './weaponIcons.js'
 
 /* ---------------------------------------------------------------------------
  * 3D weapon preview
@@ -27,7 +33,7 @@ import { attachmentSummary } from './uiUtils.js'
 
 function SpinningWeapon({ id, att }) {
   const group = useRef(null)
-  const attKey = `${att?.optic ?? ''}.${att?.muzzle ?? ''}.${att?.mag ?? ''}`
+  const attKey = `${att?.optic ?? ''}.${att?.muzzle ?? ''}.${att?.mag ?? ''}.${att?.under ?? ''}`
   const model = useMemo(() => {
     const m = createWeaponModel(id, att)
     // Centre and normalise so every weapon fills the card the same way.
@@ -85,6 +91,7 @@ const STAT_KEYS = [
   ['mobility', 'Mobility'],
   ['handling', 'Handling'],
 ]
+const STAT_LABELS = Object.fromEntries(STAT_KEYS)
 
 /**
  * Animated stat bars showing `next` relative to `base` (both stat objects): the
@@ -120,21 +127,256 @@ export function StatBars({ base, next }) {
   )
 }
 
+const MINI_STATS = [
+  ['damage', 'DMG'],
+  ['fireRate', 'RATE'],
+  ['range', 'RNG'],
+  ['mobility', 'MOB'],
+]
+
+/** Four small bars on a weapon row, to compare guns at a glance (touch has no hover). */
+function MiniStats({ stats }) {
+  return (
+    <span className="dl-mini" aria-hidden>
+      {MINI_STATS.map(([key, label]) => (
+        <span className="row" key={key}>
+          <span className="l">{label}</span>
+          <span className="bar">
+            <span style={{ width: `${stats[key]}%` }} />
+          </span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
 /* ---------------------------------------------------------------------------
- * Editor
+ * Weapon and equipment facts
  * ------------------------------------------------------------------------- */
 
-function Slot({ label, name, kind, locked, active, onClick }) {
+const FIRE_MODES = { auto: 'Full auto', semi: 'Semi-auto', bolt: 'Bolt-action', pump: 'Pump-action', melee: 'Melee' }
+const fireModeOf = (w) => (w.category === 'launcher' ? 'Single shot' : w.fireMode === 'burst' ? `${w.burst}-round burst` : (FIRE_MODES[w.fireMode] ?? ''))
+
+function weaponSpecs(w) {
+  if (w.fireMode === 'melee') {
+    return [
+      ['Damage', 'One hit'],
+      ['Reach', `${w.range} m`],
+    ]
+  }
+  const damage = w.projectile ? `${w.projectile.damage} blast` : w.pellets ? `${w.pellets} × ${w.damage.chest}` : `${w.damage.chest} · ${w.damage.head} head`
+  return [
+    ['Damage', damage],
+    ['Rate', `${Math.round(60 / w.fireInterval)} RPM`],
+    ['Magazine', `${w.magSize} + ${w.reserve}`],
+    ['Aim time', `${Math.round(w.adsTime * 1000)} ms`],
+  ]
+}
+
+function equipmentSpecs(e) {
+  const rows = []
+  if (e.damage) rows.push(['Damage', `${e.damage}`])
+  if (e.radius) rows.push([e.type === 'lethal' ? 'Blast radius' : 'Radius', `${e.radius} m`])
+  if (e.trigger) rows.push(['Trigger', `Tripwire · ${e.trigger} m`])
+  else if (e.id === 'c4') rows.push(['Trigger', 'Remote'])
+  else if (e.fuse) rows.push(['Fuse', `${e.fuse} s${e.sticky ? ' · sticky' : e.id === 'frag' ? ' · cook' : ''}`])
+  if (e.duration) rows.push(['Lasts', `${e.duration} s`])
+  rows.push(['Carried', `×${e.count}`])
+  return rows
+}
+
+function Specs({ rows }) {
   return (
-    <div className={`dl-slot ${locked ? 'locked' : ''} ${active ? 'active' : ''} ${onClick ? 'clickable' : ''}`} onClick={onClick}>
-      <div className="dl-label">{label}</div>
-      <div className="name">{name}</div>
-      {kind && (
-        <div className="dl-muted" style={{ fontSize: 11 }}>
-          {kind}
+    <div className="dl-facts">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <span className="dl-label">{label}</span>
+          <b>{value}</b>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** What an attachment does to the stats, e.g. "+8 Range" "−6 Handling". */
+function AttachmentEffects({ mods }) {
+  const fx = Object.entries(mods?.stats ?? {}).filter(([, v]) => v)
+  if (!fx.length) return null
+  return (
+    <span className="fx">
+      {fx.map(([k, v]) => (
+        <span key={k} className={v > 0 ? 'up' : 'down'}>
+          {v > 0 ? '+' : '−'}
+          {Math.abs(v)} {STAT_LABELS[k]}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/* ---------------------------------------------------------------------------
+ * Create-a-class: one choice per screen, in order.
+ *
+ *   Overview ─ Primary / Secondary ─▶ Category ─▶ Weapon ─▶ Attachments
+ *            └ Lethal / Tactical ─▶ Equipment
+ *
+ * The side panel (3D preview, stats) stays mounted through every step, so
+ * moving between screens never rebuilds its WebGL canvas.
+ * ------------------------------------------------------------------------- */
+
+const SLOT_LABEL = { primary: 'Primary', secondary: 'Secondary', lethal: 'Lethal', tactical: 'Tactical' }
+const CATEGORIES_FOR = { primary: PRIMARY_CATEGORIES, secondary: SECONDARY_CATEGORIES }
+const EQUIPMENT_FOR = { lethal: LETHAL_OPTIONS, tactical: TACTICAL_OPTIONS }
+const OVERVIEW = { view: 'overview' }
+
+/** Attachment slots worth showing for a gun (the ones with a real choice). */
+const slotsOf = (id) => ATTACHMENT_SLOTS.filter((s) => WEAPONS[id].attachSlots?.[s]?.length > 1)
+
+/** The gun a category card shows: the one equipped from it, else its first. */
+const faceOf = (cat, equipped) => (WEAPONS[equipped]?.category === cat ? equipped : weaponsIn(cat)[0])
+
+/** One step up from a screen. */
+function parentOf(nav, cls) {
+  if (nav.view === 'attach') return { view: 'weapon', slot: nav.slot, cat: WEAPONS[cls[nav.slot]].category }
+  if (nav.view === 'weapon') return { view: 'category', slot: nav.slot }
+  return OVERVIEW
+}
+
+/** The path to a screen, each step one you can jump back to. */
+function crumbsOf(nav, cls) {
+  const out = [{ label: cls.name || 'Class', to: OVERVIEW }]
+  if (nav.view === 'overview') return out
+  if (nav.view === 'equip') return [...out, { label: SLOT_LABEL[nav.slot], to: nav }]
+  out.push({ label: SLOT_LABEL[nav.slot], to: { view: 'category', slot: nav.slot } })
+  const cat = nav.view === 'attach' ? WEAPONS[cls[nav.slot]].category : nav.cat
+  if (cat) out.push({ label: CATEGORIES[cat].label, to: { view: 'weapon', slot: nav.slot, cat } })
+  if (nav.view === 'attach') out.push({ label: WEAPONS[cls[nav.slot]].name, to: nav })
+  return out
+}
+
+/** What the side panel shows: equipment, or a gun (+ the class slot it's for). */
+function sideOf(nav, hover, cls) {
+  if (nav.view === 'overview') {
+    const f = hover?.focus ?? 'primary'
+    if (f === 'lethal' || f === 'tactical') return { equip: cls[f] }
+    if (f === 'melee') return { id: 'knife', att: {} }
+    return { id: cls[f], att: cls[`${f}Att`] ?? {}, slot: f }
+  }
+  if (nav.view === 'equip') return { equip: hover?.equip ?? cls[nav.slot] }
+  const slot = nav.slot
+  const id = cls[slot]
+  const att = cls[`${slot}Att`] ?? {}
+  if (nav.view === 'category' && hover?.cat) {
+    const face = faceOf(hover.cat, id)
+    return face === id ? { id, att, slot } : { id: face, att: {}, slot }
+  }
+  if (nav.view === 'weapon' && hover?.weapon && hover.weapon !== id) return { id: hover.weapon, att: {}, slot }
+  if (nav.view === 'attach' && hover?.att && att[hover.att.slot] !== hover.att.value) return { id, att: { ...att, [hover.att.slot]: hover.att.value }, slot }
+  return { id, att, slot }
+}
+
+function SidePanel({ side, cls, previous }) {
+  if (side.equip) {
+    const e = EQUIPMENT[side.equip]
+    return (
+      <>
+        <div className="dl-preview">
+          <WeaponPreview id={e.id} />
+        </div>
+        <div className="dl-cc-name">
+          <div className="dl-label">{e.type === 'lethal' ? 'Lethal' : 'Tactical'}</div>
+          <div className="dl-h">{e.name}</div>
+          <div className="desc">{e.desc}</div>
+        </div>
+        <Specs rows={equipmentSpecs(e)} />
+      </>
+    )
+  }
+  const shown = effectiveWeapon(side.id, side.att)
+  // Compared against what the class has in that slot.
+  const current = side.slot ? effectiveWeapon(cls[side.slot], cls[`${side.slot}Att`] ?? {}) : shown
+  const bars =
+    shown !== current
+      ? { base: current.stats, next: shown.stats }
+      : previous && previous.slot === side.slot
+        ? { base: previous.stats, next: current.stats }
+        : { base: current.stats, next: null }
+  const w = WEAPONS[side.id]
+  const names = attachmentNames(side.att)
+  return (
+    <>
+      <div className="dl-preview">
+        <WeaponPreview id={side.id} att={side.att} />
+      </div>
+      <div className="dl-cc-name">
+        <div className="dl-label">
+          {w.kind} · {fireModeOf(w)}
+        </div>
+        <div className="dl-h">{w.name}</div>
+        <div className="desc">{w.desc ?? 'Fixed melee weapon on every class.'}</div>
+      </div>
+      <StatBars base={bars.base} next={bars.next} />
+      <Specs rows={weaponSpecs(shown)} />
+      {(names.length > 0 || shown.quiet) && (
+        <div className="dl-chips">
+          {names.map((n) => (
+            <span className="dl-chip" key={n}>
+              {n}
+            </span>
+          ))}
+          {shown.quiet && <span className="dl-chip accent">Off the minimap</span>}
         </div>
       )}
-    </div>
+    </>
+  )
+}
+
+/** A primary / secondary card on the overview. */
+function WeaponSlot({ slot, cls, locked, onOpen, hover }) {
+  const w = WEAPONS[cls[slot]]
+  const names = attachmentNames(cls[`${slot}Att`])
+  return (
+    <Button className={`dl-wslot ${locked ? 'locked' : ''}`} onClick={locked ? undefined : onOpen} {...hover}>
+      <span className="ico">
+        <Icon name={w.id} height={64} maxWidth={196} />
+      </span>
+      <span className="txt">
+        <span className="dl-label">
+          {SLOT_LABEL[slot]} · {CATEGORIES[w.category].label}
+        </span>
+        <span className="n">{w.name}</span>
+        <span className="dl-chips">
+          {names.length ? (
+            names.map((n) => (
+              <span className="dl-chip" key={n}>
+                {n}
+              </span>
+            ))
+          ) : (
+            <span className="dl-muted">No attachments</span>
+          )}
+        </span>
+      </span>
+      {!locked && (
+        <span className="go" aria-hidden>
+          ›
+        </span>
+      )}
+    </Button>
+  )
+}
+
+/** A lethal / tactical / melee card on the overview. */
+function EquipSlot({ label, icon, name, note, locked, onOpen, hover }) {
+  return (
+    <Button className={`dl-eslot ${locked ? 'locked' : ''}`} onClick={locked ? undefined : onOpen} {...hover}>
+      <span className="dl-label">{label}</span>
+      <span className="ico">
+        <Icon name={icon} height={30} />
+      </span>
+      <span className="n">{name}</span>
+      <span className="c">{note}</span>
+    </Button>
   )
 }
 
@@ -146,10 +388,11 @@ export function ClassEditor({ onBack }) {
   const rank = useGameStore((s) => rankInfo(s.xp).number)
   const cls = classes.find((c) => c.id === selectedId) ?? classes[0]
 
-  // Which gun the weapon card + attachment pickers are editing.
-  const [focus, setFocus] = useState('primary')
-  // Hover preview: { weapon } or { slot, value } on the focused weapon.
+  const [nav, setNav] = useState(OVERVIEW)
+  // Mouse hover only (a tap would leave it stuck): { focus } on the overview,
+  // { cat } / { weapon } / { att: { slot, value } } / { equip } in the steps.
   const [hover, setHover] = useState(null)
+  // The stats a slot had before the last change, shown as the delta for a moment.
   const [previous, setPrevious] = useState(null)
   useEffect(() => {
     if (!previous) return undefined
@@ -157,37 +400,267 @@ export function ClassEditor({ onBack }) {
     return () => clearTimeout(t)
   }, [previous])
 
-  const weaponKey = focus === 'primary' ? 'primary' : 'secondary'
-  const attKey = focus === 'primary' ? 'primaryAtt' : 'secondaryAtt'
-  const weaponId = cls[weaponKey]
-  const att = cls[attKey] ?? {}
-  const current = effectiveWeapon(weaponId, att)
-  const options = focus === 'primary' ? PRIMARY_OPTIONS : SECONDARY_OPTIONS
+  // Every gun's icon, drawn in idle moments while the overview is up.
+  useEffect(() => {
+    prepareWeaponIcons([...PRIMARY_OPTIONS, ...SECONDARY_OPTIONS])
+  }, [])
 
-  const setWeapon = (id) => {
-    if (cls.preset || id === weaponId) return
-    setPrevious(current.stats)
-    updateClass(cls.id, { [weaponKey]: id })
+  const go = (to) => {
+    setHover(null)
+    setNav(to)
   }
-  const setAttachment = (slot, value) => {
-    if (cls.preset || att[slot] === value) return
-    setPrevious(current.stats)
-    updateClass(cls.id, { [attKey]: { ...att, [slot]: value } })
+  const back = () => (nav.view === 'overview' ? onBack() : go(parentOf(nav, cls)))
+  // Escape steps back up, like the Back button.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.code !== 'Escape') return
+      e.preventDefault()
+      back()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  const hoverOn = (h) => ({
+    onPointerEnter: (e) => e.pointerType === 'mouse' && setHover(h),
+    onPointerLeave: () => setHover(null),
+  })
+
+  const statsOf = (slot) => effectiveWeapon(cls[slot], cls[`${slot}Att`] ?? {}).stats
+
+  const pickWeapon = (slot, id) => {
+    if (cls.preset) return
+    if (id !== cls[slot]) {
+      setPrevious({ slot, stats: statsOf(slot) })
+      updateClass(cls.id, { [slot]: id })
+    }
+    // Straight on to its attachments; a gun with none goes back to the class.
+    go(slotsOf(id).length ? { view: 'attach', slot } : OVERVIEW)
+  }
+  const pickAttachment = (slot, part, value) => {
+    const att = cls[`${slot}Att`] ?? {}
+    if (cls.preset || att[part] === value) return
+    setPrevious({ slot, stats: statsOf(slot) })
+    updateClass(cls.id, { [`${slot}Att`]: { ...att, [part]: value } })
+  }
+  const pickEquipment = (slot, id) => {
+    if (!cls.preset && cls[slot] !== id) updateClass(cls.id, { [slot]: id })
+    go(OVERVIEW)
   }
 
-  // What the preview + stat bars show: a hovered option, else the equipped setup.
-  let shownId = weaponId
-  let shownAtt = att
-  if (hover?.weapon && hover.weapon !== weaponId) {
-    shownId = hover.weapon
-    shownAtt = {}
-  } else if (hover?.slot && att[hover.slot] !== hover.value) {
-    shownAtt = { ...att, [hover.slot]: hover.value }
+  const crumbs = crumbsOf(nav, cls)
+  const side = sideOf(nav, hover, cls)
+  const locked = !!cls.preset
+
+  let body
+  if (nav.view === 'overview') {
+    body = (
+      <div className="dl-cc-overview">
+        <div className="dl-cc-classes">
+          <div className="dl-label">Classes</div>
+          <div className="dl-list">
+            {classes.map((c, i) => (
+              <Button
+                key={c.id}
+                className={`small dl-slide-in ${c.id === cls.id ? 'selected' : ''}`}
+                style={{ animationDelay: `${i * 30}ms` }}
+                onClick={() => selectClass(c.id)}
+              >
+                <span>{c.name}</span>
+                <span className="meta">{c.preset ? 'Preset' : `${WEAPONS[c.primary].short} · ${WEAPONS[c.secondary].short}`}</span>
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="dl-cc-loadout" key={cls.id}>
+          <div>
+            <div className="dl-label" style={{ marginBottom: 6 }}>
+              {locked ? 'Preset class (read-only)' : 'Class name'}
+            </div>
+            <input
+              className="dl-input"
+              value={cls.name}
+              disabled={locked}
+              maxLength={16}
+              onChange={(e) => updateClass(cls.id, { name: e.target.value })}
+              style={{ fontSize: 22 }}
+            />
+          </div>
+          {['primary', 'secondary'].map((slot) => (
+            <WeaponSlot key={slot} slot={slot} cls={cls} locked={locked} onOpen={() => go({ view: 'category', slot })} hover={hoverOn({ focus: slot })} />
+          ))}
+          <div className="dl-eslots">
+            {['lethal', 'tactical'].map((slot) => (
+              <EquipSlot
+                key={slot}
+                label={SLOT_LABEL[slot]}
+                icon={cls[slot]}
+                name={EQUIPMENT[cls[slot]].name}
+                note={`×${EQUIPMENT[cls[slot]].count}`}
+                locked={locked}
+                onOpen={() => go({ view: 'equip', slot })}
+                hover={hoverOn({ focus: slot })}
+              />
+            ))}
+            <EquipSlot label="Melee" icon="knife" name={WEAPONS.knife.name} note="Fixed" locked hover={hoverOn({ focus: 'melee' })} />
+          </div>
+          {locked && <div className="dl-muted dl-cc-note">Presets can’t be changed. Pick CLASS 1–5 to build your own.</div>}
+        </div>
+      </div>
+    )
+  } else if (nav.view === 'category') {
+    const equipped = cls[nav.slot]
+    body = (
+      <>
+        <StepHead label={`${SLOT_LABEL[nav.slot]} weapon`} title="Choose a category" hint="Pick a category to see its guns." />
+        <div className="dl-cat-grid">
+          {CATEGORIES_FOR[nav.slot].map((cat, i) => {
+            const guns = weaponsIn(cat)
+            const on = WEAPONS[equipped].category === cat
+            return (
+              <Button
+                key={cat}
+                className={`dl-cat dl-slide-in ${on ? 'selected' : ''}`}
+                style={{ animationDelay: `${i * 40}ms` }}
+                onClick={() => go({ view: 'weapon', slot: nav.slot, cat })}
+                {...hoverOn({ cat })}
+              >
+                <span className="top">
+                  <span className="dl-label">{CATEGORIES[cat].short}</span>
+                  {on && <span className="dl-tag">Equipped</span>}
+                </span>
+                <span className="ico">
+                  <Icon name={faceOf(cat, equipped)} height={54} maxWidth={210} />
+                </span>
+                <span className="n">{CATEGORIES[cat].label}</span>
+                <span className="c">
+                  {guns.length} {guns.length === 1 ? 'weapon' : 'weapons'} · {guns.map((g) => WEAPONS[g].short).join(' · ')}
+                </span>
+              </Button>
+            )
+          })}
+        </div>
+      </>
+    )
+  } else if (nav.view === 'weapon') {
+    const equipped = cls[nav.slot]
+    const guns = weaponsIn(nav.cat)
+    body = (
+      <>
+        <StepHead label={`${SLOT_LABEL[nav.slot]} · ${guns.length} ${guns.length === 1 ? 'weapon' : 'weapons'}`} title={CATEGORIES[nav.cat].label} hint="Pick a gun. Its attachments come next." />
+        <div className="dl-gun-list">
+          {guns.map((id, i) => {
+            const w = WEAPONS[id]
+            const on = id === equipped
+            return (
+              <Button
+                key={id}
+                className={`dl-gun dl-slide-in ${on ? 'selected' : ''}`}
+                style={{ animationDelay: `${i * 35}ms` }}
+                onClick={() => pickWeapon(nav.slot, id)}
+                {...hoverOn({ weapon: id })}
+              >
+                <span className="ico">
+                  <Icon name={id} height={42} maxWidth={150} />
+                </span>
+                <span className="txt">
+                  <span className="n">
+                    {w.name}
+                    {on && <span className="dl-tag">Equipped</span>}
+                  </span>
+                  <span className="k">
+                    {w.kind} · {fireModeOf(w)}
+                  </span>
+                  <span className="d">{w.desc}</span>
+                </span>
+                <MiniStats stats={w.stats} />
+                <span className="go" aria-hidden>
+                  ›
+                </span>
+              </Button>
+            )
+          })}
+        </div>
+      </>
+    )
+  } else if (nav.view === 'attach') {
+    const id = cls[nav.slot]
+    const att = cls[`${nav.slot}Att`] ?? {}
+    body = (
+      <>
+        <StepHead label={`${SLOT_LABEL[nav.slot]} · ${WEAPONS[id].kind}`} title={WEAPONS[id].name}>
+          <div className="actions">
+            <Button className="small ghost" onClick={() => go(parentOf(nav, cls))}>
+              Change weapon
+            </Button>
+            <Button className="small primary" onClick={() => go(OVERVIEW)}>
+              Done
+            </Button>
+          </div>
+        </StepHead>
+        <div className="dl-attachments">
+          {slotsOf(id).map((part, r) => (
+            <div className="dl-att-row dl-slide-in" key={part} style={{ animationDelay: `${r * 45}ms` }}>
+              <span className="dl-label slot">{ATTACHMENT_SLOT_LABELS[part]}</span>
+              <div className="dl-att-options">
+                {WEAPONS[id].attachSlots[part].map((value) => {
+                  const a = ATTACHMENTS[part][value]
+                  return (
+                    <button
+                      type="button"
+                      key={value}
+                      className={`dl-att ${att[part] === value ? 'on' : ''}`}
+                      title={a.desc}
+                      onClick={() => pickAttachment(nav.slot, part, value)}
+                      {...hoverOn({ att: { slot: part, value } })}
+                    >
+                      <span className="n">{a.name}</span>
+                      <span className="d">{a.desc}</span>
+                      <AttachmentEffects mods={a.mods} />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    )
+  } else {
+    const slot = nav.slot
+    body = (
+      <>
+        <StepHead label={`${SLOT_LABEL[slot]} equipment`} title={`Choose a ${slot}`} hint={slot === 'lethal' ? 'One per life; ammo boxes top it up.' : 'Utility to blind or hide.'} />
+        <div className="dl-gear-grid">
+          {EQUIPMENT_FOR[slot].map((id, i) => {
+            const e = EQUIPMENT[id]
+            const on = cls[slot] === id
+            return (
+              <Button
+                key={id}
+                className={`dl-gear dl-slide-in ${on ? 'selected' : ''}`}
+                style={{ animationDelay: `${i * 40}ms` }}
+                onClick={() => pickEquipment(slot, id)}
+                {...hoverOn({ equip: id })}
+              >
+                <span className="ico">
+                  <Icon name={id} height={38} />
+                </span>
+                <span className="txt">
+                  <span className="n">
+                    {e.name}
+                    {on && <span className="dl-tag">Equipped</span>}
+                  </span>
+                  <span className="d">{e.desc}</span>
+                </span>
+                <span className="c">×{e.count}</span>
+              </Button>
+            )
+          })}
+        </div>
+      </>
+    )
   }
-  const shown = effectiveWeapon(shownId, shownAtt)
-  const bars =
-    shown !== current ? { base: current.stats, next: shown.stats } : previous ? { base: previous, next: current.stats } : { base: current.stats, next: null }
-  const slots = ATTACHMENT_SLOTS.filter((s) => WEAPONS[weaponId].attachSlots?.[s]?.length > 1)
 
   return (
     <div className="dl-frame">
@@ -205,174 +678,49 @@ export function ClassEditor({ onBack }) {
             </div>
           </div>
         </div>
-        <Button className="small" onClick={onBack}>
+        <Button className="small" onClick={back}>
           Back
         </Button>
       </div>
-      <div className="dl-cols">
-        <div className="dl-panel" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
-          <div className="dl-label">Classes</div>
-          <div className="dl-list">
-            {classes.map((c, i) => (
-              <Button
-                key={c.id}
-                className={`small dl-slide-in ${c.id === cls.id ? 'selected' : ''}`}
-                style={{ animationDelay: `${i * 30}ms` }}
-                onClick={() => selectClass(c.id)}
-              >
-                <span>{c.name}</span>
-                <span className="meta">
-                  {c.preset ? 'PRESET' : `${WEAPONS[c.primary].short} · ${WEAPONS[c.secondary].short}`}
-                </span>
-              </Button>
-            ))}
+      <div className="dl-cc">
+        <div className="dl-panel dl-cc-main">
+          {nav.view !== 'overview' && (
+            <nav className="dl-crumbs">
+              {crumbs.map((c, i) => (
+                <Fragment key={i}>
+                  {i > 0 && (
+                    <span className="sep" aria-hidden>
+                      ›
+                    </span>
+                  )}
+                  <button type="button" disabled={i === crumbs.length - 1} onClick={() => go(c.to)}>
+                    {c.label}
+                  </button>
+                </Fragment>
+              ))}
+            </nav>
+          )}
+          <div className="dl-cc-view" key={`${nav.view}:${nav.slot ?? ''}:${nav.cat ?? ''}`}>
+            {body}
           </div>
         </div>
-
-        <div className="dl-panel dl-detail" key={cls.id}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-            <div style={{ flex: 1 }}>
-              <div className="dl-label" style={{ marginBottom: 6 }}>
-                {cls.preset ? 'Preset class (read-only)' : 'Class name'}
-              </div>
-              <input
-                className="dl-input"
-                value={cls.name}
-                disabled={cls.preset}
-                maxLength={16}
-                onChange={(e) => updateClass(cls.id, { name: e.target.value })}
-                style={{ fontSize: 24 }}
-              />
-            </div>
-          </div>
-
-          <div className="dl-slots">
-            <Slot
-              label="Primary"
-              name={WEAPONS[cls.primary].name}
-              kind={attachmentSummary(cls.primaryAtt) || WEAPONS[cls.primary].kind}
-              active={focus === 'primary'}
-              onClick={() => setFocus('primary')}
-            />
-            <Slot
-              label="Secondary"
-              name={WEAPONS[cls.secondary].name}
-              kind={attachmentSummary(cls.secondaryAtt) || WEAPONS[cls.secondary].kind}
-              active={focus === 'secondary'}
-              onClick={() => setFocus('secondary')}
-            />
-            <Slot label="Melee" name={WEAPONS.knife.name} kind="Fixed" locked />
-            <Slot label="Lethal" name={EQUIPMENT.frag.name} kind="Fixed" locked />
-            <Slot label="Tactical" name={EQUIPMENT[cls.tactical].name} kind={`×${EQUIPMENT[cls.tactical].count}`} />
-          </div>
-
-          <div className="dl-weapon-card">
-            <div className="dl-preview">
-              <WeaponPreview id={shownId} att={shownAtt} />
-              <div className="caption">
-                <div className="dl-label">{WEAPONS[shownId].kind}</div>
-                <div className="dl-h" style={{ fontSize: 26 }}>
-                  {WEAPONS[shownId].name}
-                </div>
-                <div className="dl-muted" style={{ fontSize: 11 }}>
-                  {attachmentSummary(shownAtt) || 'No attachments'}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <StatBars base={bars.base} next={bars.next} />
-              <div className="dl-muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
-                {shown.magSize} rd mag · {shown.reserve} reserve · ADS {Math.round(shown.adsTime * 1000)} ms
-                {shown.quiet ? ' · hidden from minimap' : ''}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="dl-label" style={{ marginBottom: 8 }}>
-              {focus === 'primary' ? 'Primary weapon' : 'Secondary weapon'}
-            </div>
-            <div className="dl-choice-row">
-              {options.map((id) => (
-                <Button
-                  key={id}
-                  className={`${weaponId === id ? 'selected' : ''}`}
-                  disabled={cls.preset && weaponId !== id}
-                  onMouseEnter={() => setHover({ weapon: id })}
-                  onMouseLeave={() => setHover(null)}
-                  onClick={() => setWeapon(id)}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Icon name={id} height={18} />
-                    {WEAPONS[id].name}
-                  </span>
-                  <span className="kind">{WEAPONS[id].kind}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {slots.length > 0 && (
-            <div className="dl-attachments">
-              <div className="dl-label">Attachments · {WEAPONS[weaponId].short}</div>
-              {slots.map((slot) => (
-                <div className="dl-att-row" key={slot}>
-                  <span className="dl-label slot">{ATTACHMENT_SLOT_LABELS[slot]}</span>
-                  <div className="dl-att-options">
-                    {WEAPONS[weaponId].attachSlots[slot].map((value) => {
-                      const a = ATTACHMENTS[slot][value]
-                      return (
-                        <button
-                          type="button"
-                          key={value}
-                          className={`dl-att ${att[slot] === value ? 'on' : ''}`}
-                          disabled={cls.preset && att[slot] !== value}
-                          title={a.desc}
-                          onMouseEnter={() => setHover({ slot, value })}
-                          onMouseLeave={() => setHover(null)}
-                          onClick={() => setAttachment(slot, value)}
-                        >
-                          <span className="n">{a.name}</span>
-                          <span className="d">{a.desc}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div>
-            <div className="dl-label" style={{ marginBottom: 8 }}>
-              Tactical
-            </div>
-            <div className="dl-choice-row">
-              {TACTICAL_OPTIONS.map((id) => (
-                <Button
-                  key={id}
-                  className={`${cls.tactical === id ? 'selected' : ''}`}
-                  disabled={cls.preset && cls.tactical !== id}
-                  onClick={() => !cls.preset && updateClass(cls.id, { tactical: id })}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Icon name={id} height={18} />
-                    {EQUIPMENT[id].name}
-                  </span>
-                  <span className="kind">
-                    {id === 'flash' ? 'Blinds + deafens · ×2' : 'Blocks vision for 12 s · ×1'}
-                  </span>
-                </Button>
-              ))}
-            </div>
-          </div>
-          {cls.preset && (
-            <div className="dl-muted" style={{ fontSize: 12 }}>
-              Presets can’t be edited — pick CLASS 1–5 to build your own.
-            </div>
-          )}
-        </div>
+        <aside className="dl-panel dl-cc-side">
+          <SidePanel side={side} cls={cls} previous={previous} />
+        </aside>
       </div>
+    </div>
+  )
+}
+
+/** A step's title, with a hint (or the step's buttons) to its right. */
+function StepHead({ label, title, hint, children }) {
+  return (
+    <div className="dl-cc-step">
+      <div>
+        <div className="dl-label">{label}</div>
+        <h2 className="dl-h">{title}</h2>
+      </div>
+      {children ?? <div className="dl-muted hint">{hint}</div>}
     </div>
   )
 }

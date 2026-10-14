@@ -42,10 +42,11 @@ const RIGHT = [
   { id: 'jump', cx: 7, cy: 37, r: 6, label: 'Jump', icon: 'jump', code: 'Touch:jump' },
   { id: 'reload', cx: 34, cy: 31, r: 5.5, label: 'Reload', icon: 'reload', code: 'Touch:reload' },
   { id: 'swap', cx: 20, cy: 44, r: 5.5, label: 'Swap', icon: 'swap' },
-  { id: 'lethal', cx: 33, cy: 46, r: 5, label: 'Frag', icon: 'frag', code: 'Touch:lethal' },
+  { id: 'lethal', cx: 33, cy: 46, r: 5, label: 'Lethal', icon: 'frag', code: 'Touch:lethal' },
   { id: 'tactical', cx: 45, cy: 39, r: 5, label: 'Tactical', icon: 'tactical', code: 'Touch:tactical' },
   { id: 'knife', cx: 47, cy: 24, r: 5, label: 'Knife', icon: 'knife', code: 'Touch:knife' },
 ]
+const RIGHT_LETHAL = RIGHT.find((b) => b.id === 'lethal')
 /** The left fire button: from the bottom-left corner. */
 const LEFT_FIRE = { id: 'fireL', cx: 10, cy: 40, r: 6, label: 'Fire', icon: 'bullet' }
 /** Where the stick rests when no thumb is on it: from the bottom-left corner, in --u. */
@@ -84,6 +85,22 @@ const ICONS = {
   frag: [
     { f: 1, d: 'M12 22.2a6.2 6.4 0 1 0 0-12.8 6.2 6.4 0 0 0 0 12.8zM9.6 6.2h4.8v3.6H9.6z' },
     { d: 'M14.4 7.2l3.6-2.6v4.4M8.4 6.4a2.4 2.4 0 1 1 1.6-2.2' },
+  ],
+  semtex: [
+    { f: 1, d: 'M7 10h10v10.6a1.4 1.4 0 0 1-1.4 1.4H8.4A1.4 1.4 0 0 1 7 20.6zM9.4 6.4h5.2V9H9.4z' },
+    { d: 'M12 6.4V3.4h3.6' },
+  ],
+  c4: [
+    { f: 1, d: 'M2.5 12h19v8.5h-19zM8 8.4h6V12H8z' },
+    { d: 'M13 8.4V3.6' },
+  ],
+  claymore: [
+    { f: 1, d: 'M3.5 7c5.6-1.6 11.4-1.6 17 0v8.6c-5.6-1.4-11.4-1.4-17 0zM8 3.4h2v2.6H8zM14 3.4h2v2.6h-2z' },
+    { d: 'M7 15.4l-2.2 6M17 15.4l2.2 6' },
+  ],
+  detonator: [
+    { f: 1, d: 'M8 7.4h8v14.4H8zM16 10.4h2.6v4.2H16z' },
+    { d: 'M13.6 7.4V2.6' },
   ],
   tactical: [
     { f: 1, d: 'M8 8.6h8v13.6H8zM9.6 5h4.8v2.6H9.6z' },
@@ -204,6 +221,9 @@ export function TouchControls({ scale }) {
   const st = useRef({ stick: null, look: null, fire: new Map() })
   const [aiming, setAiming] = useState(false)
   const scoreboardOpen = useGameStore((s) => s.scoreboardOpen)
+  // The lethal button wears the class's lethal, and turns into the detonator while a C4 is out.
+  const lethalKind = useGameStore((s) => s.hud.lethalKind)
+  const c4Out = useGameStore((s) => s.hud.c4Out)
   const opacity = useGameStore((s) => s.settings.touchOpacity ?? 0.7)
 
   // Clean slate on the way in and out (an overlay, death, leaving the match).
@@ -339,7 +359,7 @@ export function TouchControls({ scale }) {
     return (
       <div
         key={b.id}
-        className={`dl-tc-btn ${fire ? 'fire' : ''} ${b.id === 'aim' && aiming ? 'latched' : ''}`}
+        className={`dl-tc-btn ${fire ? 'fire' : ''} ${(b.id === 'aim' && aiming) || (b.id === 'lethal' && c4Out) ? 'latched' : ''}`}
         style={place(b, side)}
         role="button"
         aria-label={b.label}
@@ -352,6 +372,8 @@ export function TouchControls({ scale }) {
       </div>
     )
   }
+
+  const lethal = { ...RIGHT_LETHAL, icon: c4Out ? 'detonator' : ICONS[lethalKind] ? lethalKind : 'frag', label: c4Out ? 'Detonate' : 'Lethal' }
 
   // Pause and scores sit between the portal's own buttons (top-left) and the score bar.
   const topLeft = `calc(50% - ${Math.round(215 * scale) + 8}px - var(--u) * 21)`
@@ -370,7 +392,7 @@ export function TouchControls({ scale }) {
         <StickBase />
       </div>
       <div className="dl-tc-knob" ref={knob} />
-      {RIGHT.map((b) => button(b))}
+      {RIGHT.map((b) => button(b.id === 'lethal' ? lethal : b))}
       {button(LEFT_FIRE, 'left')}
       <UseButton />
       <div className="dl-tc-top" style={{ left: topLeft }}>

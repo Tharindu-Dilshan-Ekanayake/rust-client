@@ -1,36 +1,33 @@
 import {
-  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
-  Color,
-  CanvasTexture,
   CircleGeometry,
+  Color,
   CylinderGeometry,
-  DoubleSide,
-  ExtrudeGeometry,
   Group,
   IcosahedronGeometry,
   LinearSRGBColorSpace,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  MeshPhysicalMaterial,
   MeshStandardMaterial,
-  Object3D,
-  Path,
-  PlaneGeometry,
-  Shape,
   SphereGeometry,
   SRGBColorSpace,
   TorusGeometry,
-  Vector2,
 } from 'three'
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
-import { sanitizeAttachments } from '../../shared/weapons.js'
+import { baseOf, sanitizeAttachments } from '../../shared/weapons.js'
 import { SHADOW_ONLY_LAYER } from '../layers.js'
-import { brushedFinish, metalFinish, paintFinish, rubberFinish, stippleFinish, woodFinish } from './weaponTextures.js'
+import { EXPLOSIVES } from './guns/explosives.js'
+import { LMGS } from './guns/lmgs.js'
+import { PISTOLS } from './guns/pistols.js'
+import { RIFLES } from './guns/rifles.js'
+import { SMGS } from './guns/smgs.js'
+import { SNIPERS } from './guns/snipers.js'
+import { add, addMuzzle, addOptic, addUnder, box, cached, cartridge, coupleMag, crossPin, grooves, M, marker, profileGeo, rail, rbox, tube } from './weaponKit.js'
+
+export { weaponMaterials } from './weaponKit.js'
 
 /**
  * Procedural weapon models.
@@ -56,388 +53,6 @@ import { brushedFinish, metalFinish, paintFinish, rubberFinish, stippleFinish, w
  * Profiles are written as (u, v) points: u = metres forward of the trigger,
  * v = metres up.
  */
-
-/* ---------------------------------------------------------------------------
- * Materials
- * ------------------------------------------------------------------------- */
-
-const F = {
-  metal: metalFinish(),
-  paint: paintFinish(),
-  stipple: stippleFinish(),
-  wood: woodFinish(),
-  brushed: brushedFinish(),
-  rubber: rubberFinish(),
-}
-
-const physical = (opts) => new MeshPhysicalMaterial(opts)
-
-export const weaponMaterials = {
-  /** Hard-anodised aluminium (receivers): dark grey, faint scratches, a little clear coat. */
-  metal: physical({
-    color: '#2f3135',
-    metalness: 0.55,
-    roughness: 1,
-    map: F.metal.map,
-    roughnessMap: F.metal.roughnessMap,
-    normalMap: F.metal.normalMap,
-    normalScale: new Vector2(0.35, 0.35),
-    clearcoat: 0.18,
-    clearcoatRoughness: 0.45,
-  }),
-  /** Parkerised steel (barrels, muzzle devices, small parts). */
-  metalDark: physical({
-    color: '#232528',
-    metalness: 0.55,
-    roughness: 1.1,
-    map: F.metal.map,
-    roughnessMap: F.metal.roughnessMap,
-    normalMap: F.metal.normalMap,
-    normalScale: new Vector2(0.3, 0.3),
-  }),
-  steel: physical({
-    color: '#b5b9be',
-    metalness: 0.95,
-    roughness: 0.75,
-    map: F.brushed.map,
-    roughnessMap: F.brushed.roughnessMap,
-    normalMap: F.brushed.normalMap,
-    normalScale: new Vector2(0.25, 0.25),
-  }),
-  stainless: physical({
-    color: '#9a9fa5',
-    metalness: 0.9,
-    roughness: 0.95,
-    map: F.brushed.map,
-    roughnessMap: F.brushed.roughnessMap,
-    normalMap: F.brushed.normalMap,
-    normalScale: new Vector2(0.3, 0.3),
-    clearcoat: 0.2,
-    clearcoatRoughness: 0.3,
-  }),
-  polymer: physical({
-    color: '#2b2d31',
-    metalness: 0.04,
-    roughness: 0.68,
-    map: F.stipple.map,
-    normalMap: F.stipple.normalMap,
-    normalScale: new Vector2(0.55, 0.55),
-    clearcoat: 0.08,
-    clearcoatRoughness: 0.6,
-  }),
-  /** Flat dark earth cerakote. */
-  tan: physical({
-    color: '#977f5b',
-    metalness: 0.06,
-    roughness: 0.74,
-    map: F.paint.map,
-    normalMap: F.paint.normalMap,
-    normalScale: new Vector2(0.4, 0.4),
-  }),
-  olive: physical({
-    color: '#4c5639',
-    metalness: 0.06,
-    roughness: 0.72,
-    map: F.paint.map,
-    normalMap: F.paint.normalMap,
-    normalScale: new Vector2(0.4, 0.4),
-  }),
-  wood: physical({
-    color: '#ffffff',
-    metalness: 0,
-    roughness: 0.48,
-    map: F.wood.map,
-    normalMap: F.wood.normalMap,
-    normalScale: new Vector2(0.4, 0.4),
-    clearcoat: 0.55,
-    clearcoatRoughness: 0.3,
-  }),
-  rubber: new MeshStandardMaterial({ color: '#1b1c1d', roughness: 0.95, normalMap: F.rubber.normalMap }),
-  brass: new MeshStandardMaterial({ color: '#d6ad57', roughness: 0.26, metalness: 1 }),
-  copper: new MeshStandardMaterial({ color: '#b9693c', roughness: 0.3, metalness: 1 }),
-  white: new MeshStandardMaterial({ color: '#e8e4d8', roughness: 0.6 }),
-  red: new MeshStandardMaterial({ color: '#d23b28', roughness: 0.4, emissive: '#5a0d06', emissiveIntensity: 0.6 }),
-  tritium: new MeshBasicMaterial({ color: '#9dff70', toneMapped: false }),
-  grey: new MeshStandardMaterial({ color: '#6c6f72', roughness: 0.6, metalness: 0.5 }),
-  inset: new MeshStandardMaterial({ color: '#0b0c0d', roughness: 0.9 }),
-  lens: new MeshPhysicalMaterial({
-    color: '#6b8fa8',
-    roughness: 0.05,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.28,
-    side: DoubleSide,
-    depthWrite: false,
-  }),
-  /** Multi-coated objective glass: deep blue-violet sheen. */
-  lensCap: physical({
-    color: '#16263d',
-    roughness: 0.04,
-    metalness: 0.75,
-    clearcoat: 1,
-    clearcoatRoughness: 0.02,
-    iridescence: 0.8,
-    iridescenceIOR: 1.6,
-    emissive: '#0b1626',
-    emissiveIntensity: 0.6,
-  }),
-  /** Reflex-sight glass: barely tinted so the view through it stays clear. */
-  reflexLens: new MeshPhysicalMaterial({
-    color: '#a9c4d6',
-    roughness: 0.02,
-    metalness: 0.2,
-    transparent: true,
-    opacity: 0.14,
-    side: DoubleSide,
-    depthWrite: false,
-  }),
-  dot: new MeshBasicMaterial({ color: '#ff2a1a', toneMapped: false }),
-  dotGlow: new MeshBasicMaterial({
-    color: '#ff3a24',
-    transparent: true,
-    opacity: 0.35,
-    blending: AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false,
-  }),
-}
-const M = weaponMaterials
-
-function holoReticleTexture() {
-  const c = document.createElement('canvas')
-  c.width = 128
-  c.height = 128
-  const ctx = c.getContext('2d')
-  ctx.strokeStyle = '#ff5530'
-  ctx.lineWidth = 5
-  ctx.beginPath()
-  ctx.arc(64, 64, 44, 0, Math.PI * 2)
-  ctx.stroke()
-  ctx.fillStyle = '#ff5530'
-  ctx.beginPath()
-  ctx.arc(64, 64, 5, 0, Math.PI * 2)
-  ctx.fill()
-  for (const [x, y, w, h] of [[62, 6, 4, 14], [62, 108, 4, 14], [6, 62, 14, 4], [108, 62, 14, 4]]) ctx.fillRect(x, y, w, h)
-  const t = new CanvasTexture(c)
-  t.colorSpace = SRGBColorSpace
-  return t
-}
-const holoReticle = new MeshBasicMaterial({
-  map: holoReticleTexture(),
-  transparent: true,
-  blending: AdditiveBlending,
-  depthWrite: false,
-  side: DoubleSide,
-})
-
-/* ---------------------------------------------------------------------------
- * Geometry helpers
- * ------------------------------------------------------------------------- */
-
-const geoCache = new Map()
-const cached = (key, build) => {
-  if (!geoCache.has(key)) geoCache.set(key, build())
-  return geoCache.get(key)
-}
-
-/** Side profile (u forward, v up) extruded `width` across, centred on x = 0. */
-function profileGeo(key, points, width, bevel = 0.0035) {
-  return cached(`p:${key}`, () => {
-    const s = new Shape()
-    points.forEach(([u, v], i) => (i ? s.lineTo(u, v) : s.moveTo(u, v)))
-    s.closePath()
-    const depth = Math.max(0.001, width - bevel * 2)
-    const g = new ExtrudeGeometry(s, {
-      depth,
-      bevelEnabled: bevel > 0,
-      bevelThickness: bevel,
-      bevelSize: bevel,
-      bevelSegments: 2,
-      curveSegments: 4,
-    })
-    // Shape X (u) -> -Z, extrusion -> X.
-    g.rotateY(Math.PI / 2)
-    g.translate(-depth / 2, 0, 0)
-    g.computeVertexNormals()
-    return g
-  })
-}
-
-function add(group, geo, mat, pos = [0, 0, 0], rot) {
-  const m = new Mesh(geo, mat)
-  m.position.set(...pos)
-  if (rot) m.rotation.set(...rot)
-  m.castShadow = true
-  group.add(m)
-  return m
-}
-
-const rbox = (w, h, d, r = 0.004) => cached(`rb:${w}:${h}:${d}:${r}`, () => new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)))
-
-/** Rounded box centred at (x, v, -u). */
-function box(group, size, u, v, mat, x = 0, rot) {
-  return add(group, rbox(...size), mat, [x, v, -u], rot)
-}
-
-/** Cylinder lying along the barrel axis, from u0 to u1, centred at height v. */
-function tube(group, r, u0, u1, v, mat, segments = 16, rEnd = r, x = 0) {
-  const len = Math.abs(u1 - u0)
-  const geo = cached(`t:${r}:${rEnd}:${len}:${segments}`, () => {
-    const g = new CylinderGeometry(rEnd, r, len, segments)
-    g.rotateX(-Math.PI / 2)
-    return g
-  })
-  return add(group, geo, mat, [x, v, -(u0 + u1) / 2])
-}
-
-/** Cylinder running across the gun (pins, screws, knobs), centred at (x, v, -u). */
-function crossPin(group, r, len, u, v, mat, x = 0, segments = 12) {
-  const geo = cached(`x:${r}:${len}:${segments}`, () => new CylinderGeometry(r, r, len, segments).rotateZ(Math.PI / 2))
-  return add(group, geo, mat, [x, v, -u])
-}
-
-/** Thick-walled open tube along the barrel axis (an optic housing you can see through). */
-function ringTube(group, rOut, rIn, u0, u1, v, mat, segments = 24, x = 0) {
-  const len = Math.abs(u1 - u0)
-  const geo = cached(`ring:${rOut}:${rIn}:${len}:${segments}`, () => {
-    const shape = new Shape().absarc(0, 0, rOut, 0, Math.PI * 2, false)
-    shape.holes.push(new Path().absarc(0, 0, rIn, 0, Math.PI * 2, true))
-    const g = new ExtrudeGeometry(shape, { depth: len, bevelEnabled: false, curveSegments: segments })
-    g.translate(0, 0, -len / 2)
-    const uv = g.getAttribute('uv')
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 4, uv.getY(i) * 4)
-    return g
-  })
-  return add(group, geo, mat, [x, v, -(u0 + u1) / 2])
-}
-
-function marker(group, name, u, v, x = 0) {
-  const o = new Object3D()
-  o.name = name
-  o.position.set(x, v, -u)
-  group.add(o)
-  return o
-}
-
-/** Picatinny rail with teeth, from u0 to u1, base at height v. */
-function rail(group, u0, u1, v, width = 0.022, mat = M.metalDark) {
-  box(group, [width, 0.006, u1 - u0], (u0 + u1) / 2, v + 0.003, mat, 0, undefined)
-  const teeth = Math.floor((u1 - u0) / 0.011)
-  const tooth = cached(`tooth:${width}`, () => new RoundedBoxGeometry(width + 0.004, 0.005, 0.006, 1, 0.001))
-  for (let i = 0; i < teeth; i++) add(group, tooth, mat, [0, v + 0.0085, -(u0 + 0.0055 + i * 0.011)])
-}
-
-/** A loaded round lying along the barrel axis: brass case + copper bullet. */
-function cartridge(group, u, v, x, len = 0.045, r = 0.0048) {
-  tube(group, r, u - len * 0.72, u, v, M.brass, 10, r, x)
-  tube(group, r * 0.94, u, u + len * 0.12, v, M.brass, 10, r * 0.8, x)
-  tube(group, r * 0.8, u + len * 0.12, u + len * 0.3, v, M.copper, 10, r * 0.15, x)
-}
-
-/** Grooves (dark insets) evenly spaced along u. */
-function grooves(group, count, u0, step, v, size, x = 0) {
-  for (let i = 0; i < count; i++) box(group, size, u0 + i * step, v, M.inset, x)
-}
-
-/* ---------------------------------------------------------------------------
- * Attachments
- * ------------------------------------------------------------------------- */
-
-/** Mounts an optic on a rail at height `v` (rail top) around `u`; returns the sight-line height. */
-function addOptic(group, kind, u, v, small = false) {
-  if (kind === 'reddot') {
-    if (small) {
-      // Pistol-sized open reflex sight: a base and a hooded window frame.
-      box(group, [0.03, 0.012, 0.042], u, v + 0.006, M.metal)
-      for (const x of [-0.0125, 0.0125]) box(group, [0.005, 0.024, 0.008], u + 0.014, v + 0.022, M.metal, x)
-      box(group, [0.03, 0.005, 0.01], u + 0.014, v + 0.0335, M.metal)
-      crossPin(group, 0.003, 0.033, u - 0.012, v + 0.008, M.steel)
-      const lens = add(group, cached('rmrLens', () => new PlaneGeometry(0.021, 0.017)), M.reflexLens, [0, v + 0.022, -(u + 0.015)])
-      lens.rotation.x = 0.12
-      add(group, cached('dotS', () => new SphereGeometry(0.0009, 8, 6)), M.dot, [0, v + 0.021, -(u + 0.013)])
-      add(group, cached('dotSG', () => new SphereGeometry(0.0018, 8, 6)), M.dotGlow, [0, v + 0.021, -(u + 0.013)])
-      return { sightV: v + 0.021, sightU: u - 0.03 }
-    }
-    // Short, wide tube on a riser, so the window stays big and clear of the barrel.
-    const c = v + 0.046
-    box(group, [0.03, 0.016, 0.046], u, v + 0.008, M.metalDark)
-    box(group, [0.014, 0.024, 0.034], u, v + 0.022, M.metal)
-    crossPin(group, 0.0035, 0.036, u + 0.012, v + 0.008, M.steel)
-    ringTube(group, 0.0235, 0.0195, u - 0.026, u + 0.026, c, M.metal)
-    ringTube(group, 0.0255, 0.0195, u + 0.02, u + 0.034, c, M.metalDark)
-    ringTube(group, 0.025, 0.0195, u - 0.032, u - 0.022, c, M.metalDark)
-    // Brightness knob and windage turret, each with a knurled ring.
-    add(group, cached('knob', () => new CylinderGeometry(0.008, 0.008, 0.01, 16)), M.metalDark, [0.027, c, -u], [0, 0, Math.PI / 2])
-    add(group, cached('knobRing', () => new TorusGeometry(0.008, 0.0012, 4, 16)), M.metal, [0.031, c, -u], [0, Math.PI / 2, 0])
-    add(group, cached('turret', () => new CylinderGeometry(0.007, 0.007, 0.008, 16)), M.metalDark, [0, c + 0.026, -u])
-    const lens = add(group, cached('rdLens', () => new CircleGeometry(0.0196, 24)), M.reflexLens, [0, c, -(u + 0.024)])
-    lens.rotation.y = Math.PI
-    // The dot sits on the sight line just in front of the eye-side ring.
-    add(group, cached('dot', () => new SphereGeometry(0.0008, 8, 6)), M.dot, [0, c, -(u + 0.02)])
-    add(group, cached('dotG', () => new SphereGeometry(0.0016, 8, 6)), M.dotGlow, [0, c, -(u + 0.02)])
-    return { sightV: c, sightU: u - 0.032 }
-  }
-  if (kind === 'holo') {
-    const c = v + 0.03
-    box(group, [0.036, 0.016, 0.075], u, v + 0.008, M.metalDark)
-    // Hood: two side walls and a top bar around an open window.
-    for (const x of [-0.019, 0.019]) box(group, [0.006, 0.038, 0.05], u + 0.012, c, M.metal, x)
-    box(group, [0.044, 0.006, 0.05], u + 0.012, c + 0.02, M.metal)
-    // Battery cap and buttons at the back.
-    crossPin(group, 0.006, 0.014, u - 0.026, v + 0.012, M.metalDark, 0.022)
-    for (const x of [-0.008, 0.008]) box(group, [0.008, 0.004, 0.008], u - 0.03, v + 0.018, M.rubber, x)
-    const glass = add(group, cached('holoGlass', () => new PlaneGeometry(0.032, 0.03)), M.lens, [0, c, -(u + 0.03)])
-    glass.renderOrder = 2
-    const ret = add(group, cached('holoRet', () => new PlaneGeometry(0.02, 0.02)), holoReticle, [0, c, -(u + 0.031)])
-    ret.renderOrder = 3
-    return { sightV: c, sightU: u - 0.06 }
-  }
-  return null
-}
-
-/** Muzzle device from `u` forward at height `v`. Returns the new muzzle tip. */
-function addMuzzle(group, kind, u, v, r) {
-  if (kind === 'suppressor') {
-    const len = r > 0.015 ? 0.2 : 0.14
-    tube(group, r * 2.0, u + 0.012, u + len - 0.012, v, M.metalDark, 24)
-    tube(group, r * 2.15, u, u + 0.012, v, M.metal, 24)
-    tube(group, r * 2.15, u + len - 0.012, u + len, v, M.metal, 24)
-    // Machined rings and a front cap bore.
-    for (let i = 1; i < 4; i++) tube(group, r * 2.05, u + (len * i) / 4 - 0.002, u + (len * i) / 4 + 0.002, v, M.metal, 24)
-    tube(group, r * 0.9, u + len, u + len + 0.001, v, M.inset, 12)
-    return u + len
-  }
-  if (kind === 'compensator') {
-    const len = r > 0.015 ? 0.07 : 0.05
-    box(group, [r * 2.6, r * 2.6, len], u + len / 2, v, M.metal)
-    // Gas ports on top and the sides.
-    for (let i = 0; i < 3; i++) {
-      box(group, [r * 1.6, 0.004, 0.008], u + 0.012 + i * (len / 3.4), v + r * 1.31, M.inset)
-      for (const x of [-1, 1]) box(group, [0.004, r * 1.2, 0.008], u + 0.012 + i * (len / 3.4), v, M.inset, x * r * 1.31)
-    }
-    return u + len
-  }
-  if (kind === 'brake') {
-    // Big side-ported brake for the sniper.
-    const len = 0.085
-    box(group, [r * 3.1, r * 2.5, len], u + len / 2, v, M.metalDark)
-    for (let i = 0; i < 3; i++) {
-      for (const x of [-1, 1]) box(group, [0.006, r * 1.7, 0.012], u + 0.016 + i * 0.024, v, M.inset, x * r * 1.53)
-    }
-    tube(group, r * 0.8, u + len, u + len + 0.001, v, M.inset, 12)
-    return u + len
-  }
-  // Pistols have a plain crown.
-  if (kind === 'none-pistol') return u
-  // Standard birdcage flash hider: slotted cylinder.
-  tube(group, r * 1.45, u, u + 0.055, v, M.metalDark, 16)
-  tube(group, r * 1.55, u, u + 0.008, v, M.metalDark, 16)
-  for (const a of [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4, Math.PI / 2]) {
-    box(group, [0.0035, 0.0035, 0.032], u + 0.033, v + Math.sin(a) * r * 1.42, M.inset, Math.cos(a) * r * 1.42)
-  }
-  tube(group, r * 0.85, u + 0.055, u + 0.056, v, M.inset, 12)
-  return u + 0.055
-}
 
 /* ---------------------------------------------------------------------------
  * Weapons
@@ -511,6 +126,7 @@ function buildAR(att) {
   box(mag, [0.04, 0.012, 0.09], ext ? 0.155 : 0.137, ext ? -0.278 : -0.198, M.polymer, 0, [ext ? -0.35 : -0.3, 0, 0])
   cartridge(mag, 0.11, -0.026, 0.0035)
   cartridge(mag, 0.104, -0.033, -0.0035)
+  if (att.mag === 'fast') coupleMag(mag, -0.036, -0.09, 0.1)
   g.add(mag)
 
   // Sights: optic, or folding irons.
@@ -527,8 +143,9 @@ function buildAR(att) {
   }
   const tip = addMuzzle(g, att.muzzle, 0.76, 0.045, 0.0092)
   marker(g, 'muzzle', tip + 0.01, 0.045)
-  marker(g, 'leftHand', 0.45, -0.005)
+  marker(g, 'leftHand', ...(addUnder(g, att.under, 0.43, 0.0) ?? [0.45, -0.005]))
   marker(g, 'eject', 0.075, 0.06, 0.036)
+  marker(g, 'charge', -0.135, 0.092, -0.012)
   return g
 }
 
@@ -656,6 +273,7 @@ function buildPistol(att) {
     for (const x of [-0.007, 0.007]) add(slide, cached('trit', () => new SphereGeometry(0.0016, 8, 6)), M.tritium, [x, 0.0635, 0.064])
     marker(g, 'sight', -0.09, 0.064)
   }
+  if (att.under === 'laser') addUnder(g, 'laser', 0.095, -0.002, true)
   const tip = addMuzzle(g, att.muzzle === 'suppressor' ? 'suppressor' : 'none-pistol', 0.138, 0.035, 0.0085)
   marker(g, 'muzzle', tip + 0.005, 0.035)
   marker(g, 'leftHand', -0.02, -0.055)
@@ -719,6 +337,7 @@ function buildViper(att) {
     box(g, [0.02, 0.008, 0.008], -0.04, 0.064, M.metalDark)
     marker(g, 'sight', -0.07, 0.069)
   }
+  if (att.under === 'laser') addUnder(g, 'laser', 0.17, 0.012, true)
   const tip = addMuzzle(g, att.muzzle === 'compensator' ? 'compensator' : 'none-pistol', 0.25, 0.04, 0.012)
   marker(g, 'muzzle', tip + 0.005, 0.04)
   marker(g, 'leftHand', -0.035, -0.055)
@@ -758,10 +377,12 @@ function buildHornet(att) {
     box(g, [0.022, 0.012, 0.008], -0.06, 0.081, M.metalDark)
     marker(g, 'sight', -0.08, 0.087)
   }
+  if (att.under === 'laser') addUnder(g, 'laser', 0.165, 0.018, true)
   const tip = addMuzzle(g, att.muzzle === 'suppressor' ? 'suppressor' : 'none-pistol', 0.19, 0.04, 0.0085)
   marker(g, 'muzzle', tip + 0.005, 0.04)
   marker(g, 'leftHand', 0.12, -0.07)
   marker(g, 'eject', 0.03, 0.05, 0.018)
+  marker(g, 'charge', -0.085, 0.058, -0.022)
   return g
 }
 
@@ -787,6 +408,7 @@ function buildSMG(att) {
   const ext = att.mag === 'extended'
   add(mag, profileGeo(ext ? 'smgMagX' : 'smgMag', ext ? [[0.06, -0.025], [0.115, -0.025], [0.15, -0.25], [0.095, -0.255]] : [[0.06, -0.025], [0.115, -0.025], [0.138, -0.17], [0.083, -0.175]], 0.028, 0.004), M.metalDark)
   cartridge(mag, 0.1, -0.02, 0, 0.026, 0.0045)
+  if (att.mag === 'fast') coupleMag(mag, -0.032, -0.08, 0.1)
   g.add(mag)
   const optic = addOptic(g, att.optic, 0.02, 0.079)
   if (optic) {
@@ -798,8 +420,9 @@ function buildSMG(att) {
   }
   const tip = addMuzzle(g, att.muzzle, 0.41, 0.04, 0.0085)
   marker(g, 'muzzle', tip + 0.008, 0.04)
-  marker(g, 'leftHand', 0.27, -0.004)
+  marker(g, 'leftHand', ...(addUnder(g, att.under, 0.29, -0.004) ?? [0.27, -0.004]))
   marker(g, 'eject', 0.07, 0.05, 0.026)
+  marker(g, 'charge', -0.08, 0.06, -0.03)
   return g
 }
 
@@ -829,7 +452,7 @@ function buildShotgun(att) {
   g.add(pump)
   add(pump, profileGeo('sgPump', [[0.26, -0.012], [0.44, -0.012], [0.44, 0.046], [0.26, 0.046]], 0.05, 0.008), M.polymer)
   for (let i = 0; i < 6; i++) box(pump, [0.052, 0.006, 0.006], 0.28 + i * 0.026, -0.004, M.inset)
-  marker(pump, 'leftHand', 0.35, -0.012)
+  marker(pump, 'leftHand', ...(addUnder(pump, att.under, 0.35, -0.012) ?? [0.35, -0.012]))
   // Pistol-grip stock, guard, trigger.
   add(g, profileGeo('sgStock', [[-0.12, 0.05], [-0.42, 0.06], [-0.42, -0.08], [-0.33, -0.06], [-0.16, -0.012], [-0.12, -0.012]], 0.046, 0.008), M.polymer)
   box(g, [0.05, 0.15, 0.016], -0.425, -0.01, M.rubber)
@@ -900,7 +523,7 @@ function buildLMG(att) {
   }
   const tip = addMuzzle(g, att.muzzle, 0.76, 0.042, 0.0135)
   marker(g, 'muzzle', tip + 0.01, 0.042)
-  marker(g, 'leftHand', 0.33, 0.015)
+  marker(g, 'leftHand', ...(addUnder(g, att.under, 0.36, 0.02) ?? [0.33, 0.015]))
   marker(g, 'eject', 0.06, 0.02, 0.036)
   return g
 }
@@ -1021,9 +644,15 @@ const BUILDERS = {
   frag: buildFrag,
   flash: () => buildCanister(M.grey, M.white),
   smoke: () => buildCanister(M.olive, M.white),
+  ...RIFLES,
+  ...SMGS,
+  ...SNIPERS,
+  ...LMGS,
+  ...PISTOLS,
+  ...EXPLOSIVES,
 }
 
-/** Where the firing hand closes on each weapon (u along the barrel, v height). */
+/** Where the firing hand closes on each weapon (u along the barrel, v height); newer guns share their family's. */
 const GRIPS = {
   ar: [-0.005, -0.08],
   sniper: [-0.01, -0.075],
@@ -1215,7 +844,7 @@ export function createWeaponModel(id, att) {
   return templates.get(key).clone(true)
 }
 
-const keyOf = (id, a) => `${id}|${a.optic ?? ''}|${a.muzzle ?? ''}|${a.mag ?? ''}`
+const keyOf = (id, a) => `${id}|${a.optic ?? ''}|${a.muzzle ?? ''}|${a.mag ?? ''}|${a.under ?? ''}`
 
 /** Building a gun, in steps of a few milliseconds each (see prepareWeaponModel). */
 function buildStages(id, a, key) {
@@ -1224,7 +853,8 @@ function buildStages(id, a, key) {
     () => {
       model = (BUILDERS[id] ?? BUILDERS.ar)(a)
       model.userData.weaponId = id
-      if (GRIPS[id]) marker(model, 'grip', GRIPS[id][0], GRIPS[id][1])
+      const grip = GRIPS[id] ?? GRIPS[baseOf(id)]
+      if (grip) marker(model, 'grip', grip[0], grip[1])
     },
     () => mergeStatics(model),
     () => {
@@ -1267,13 +897,24 @@ function runPending() {
 
 /**
  * Builds a combination (and its far LOD) in idle time, a step at a time; until
- * it's ready, callers can show the gun with its default attachments.
+ * it's ready, callers can show the gun with its default attachments. An
+ * `urgent` one (your own class) goes to the front of the queue.
  */
-export function prepareWeaponModel(id, att) {
+export function prepareWeaponModel(id, att, urgent = false) {
   const a = sanitizeAttachments(id, att)
   const key = keyOf(id, a)
-  if ((templates.has(key) && lods.has(key)) || pending.has(key)) return
-  pending.set(key, { stages: templates.has(key) ? [] : buildStages(id, a, key) })
+  if (templates.has(key) && lods.has(key)) return
+  const job = pending.get(key) ?? { stages: templates.has(key) ? [] : buildStages(id, a, key) }
+  if (urgent) {
+    const rest = [...pending].filter(([k]) => k !== key)
+    pending.clear()
+    pending.set(key, job)
+    for (const [k, j] of rest) pending.set(k, j)
+  } else if (!pending.has(key)) {
+    pending.set(key, job)
+  } else {
+    return
+  }
   if (!idleQueued) {
     idleQueued = true
     whenIdle(runPending)

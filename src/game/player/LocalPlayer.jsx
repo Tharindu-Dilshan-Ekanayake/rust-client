@@ -517,7 +517,7 @@ export function LocalPlayer() {
     camera.getWorldDirection(_fwd)
     _right.set(1, 0, 0).applyQuaternion(camera.quaternion)
     _up.set(0, 1, 0).applyQuaternion(camera.quaternion)
-    const reach = { sniper: 1.0, lmg: 0.85, shotgun: 0.85, smg: 0.6, rpg: 0.6, hornet: 0.45 }[w.id] ?? (w.kind === 'Pistol' ? 0.45 : 0.75)
+    const reach = { sniper: 1.0, lmg: 0.85, shotgun: 0.85, smg: 0.6, rpg: 0.6, hornet: 0.45 }[w.base] ?? (w.category === 'pistol' ? 0.45 : 0.75)
     l.muzzle
       .copy(camera.position)
       .addScaledVector(_fwd, reach)

@@ -6,8 +6,9 @@ import { sfx } from '../../audio/sfx.js'
 import { renderTime, sampleRemote } from '../../net/network.js'
 import { isTeamMode, PLAYER } from '../../shared/constants.js'
 import { activeMap } from '../../store/gameStore.js'
-import { parseKit } from '../../shared/weapons.js'
+import { baseOf, parseKit, WEAPONS } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
+import { remoteLaserBeam } from '../models/laser.js'
 import { createWeaponLod, createWeaponModel, hasWeaponModel, prepareWeaponModel } from '../models/weaponModels.js'
 import { CROUCH_DROP, CROUCH_LEAN } from '../avatarRig.js'
 import PlayerAvatar from '../PlayerAvatar.jsx'
@@ -219,6 +220,8 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
       holder.current.clear()
       const model = createWeaponModel(weaponId, kit)
       model.rotation.y = Math.PI
+      // A laser sight shows its beam: it gives them away.
+      model.getObjectByName('laser')?.add(remoteLaserBeam())
       holder.current.add(model)
       const lod = createWeaponLod(weaponId, kit)
       if (lod) {
@@ -364,7 +367,8 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
       if (flashing) {
         w.muzzle.getWorldPosition(_v)
         g.worldToLocal(flash.current.position.copy(_v))
-        const big = r.weapon === 'sniper' ? 0.9 : r.weapon === 'viper' ? 0.7 : 0.55
+        const fam = baseOf(r.weapon)
+        const big = fam === 'sniper' ? 0.9 : fam === 'viper' || r.weapon === 'dragoon' ? 0.7 : 0.55
         flash.current.scale.setScalar(big * (0.8 + Math.random() * 0.4))
         flash.current.material.rotation = Math.random() * Math.PI
       }
@@ -372,7 +376,7 @@ const RemotePlayer = memo(function RemotePlayer({ id }) {
 
     // Scope glint: enemies scoped in with a sniper flash a star you can see across the map.
     if (glint.current) {
-      const glinting = alive && !friendly && r.ads && r.weapon === 'sniper' && w.sight
+      const glinting = alive && !friendly && r.ads && WEAPONS[r.weapon]?.scoped && w.sight
       glint.current.visible = Boolean(glinting)
       if (glinting) {
         const pulse = 0.045 + Math.sin(now * 0.012) * 0.012

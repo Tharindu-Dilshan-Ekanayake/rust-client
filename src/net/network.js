@@ -21,7 +21,7 @@ import {
   TEAM_SELECT_TIMEOUT,
 } from '../shared/constants.js'
 import { isMapId, MAPS } from '../shared/maps.js'
-import { EQUIPMENT, WEAPONS } from '../shared/weapons.js'
+import { baseOf, EQUIPMENT, WEAPONS } from '../shared/weapons.js'
 import { currentRank, getGame, toWireClass, useGameStore } from '../store/gameStore.js'
 import { DIRECT_URL, openRoom, USE_MATCHMAKER } from './endpoint.js'
 
@@ -332,6 +332,11 @@ class Network {
       sfx.play('knifeSwing', { pos: [r.pos.x, r.pos.y + 1.2, r.pos.z], volume: 0.8 })
     })
     on('act', (m) => {
+      // A claymore tripping: its click, for anyone near enough to hear it.
+      if (m.a === 'trip' && Array.isArray(m.p)) {
+        sfx.play('beep', { pos: m.p, volume: 0.9, ref: 3, maxDistance: 30 })
+        return
+      }
       const r = runtime.remotes.get(m.id)
       if (!r) return
       const at = [r.pos.x, r.pos.y + 1.1, r.pos.z]
@@ -344,8 +349,9 @@ class Network {
         const shell = w?.shellTime ? { start: w.shellStart, time: w.shellTime } : null
         const foley = reloadFoley(wid, Boolean(m.e), r.reloadDur / 1000, shell).map(([f, name]) => [(f * r.reloadDur) / 1000, name])
         sfx.playSequence(foley, { pos: at, volume: 0.7, ref: 2, maxDistance: 26 })
-      } else if (m.a === 'throw') {
+      } else if (m.a === 'throw' || m.a === 'plant') {
         r.throwAt = performance.now()
+        if (m.a === 'plant') sfx.play('plant', { pos: at, volume: 0.6, ref: 2, maxDistance: 18 })
       }
     })
     on('explosion', (m) => this.onExplosion(m))
@@ -680,7 +686,8 @@ class Network {
       if (d < 3.2 && (!best || d < best.d)) best = { d, p }
     }
     if (!best) return
-    const pistol = m.w === 'pistol' || m.w === 'hornet' || m.w === 'smg' || m.w === 'viper'
+    const fam = baseOf(m.w)
+    const pistol = fam === 'pistol' || fam === 'hornet' || fam === 'smg' || fam === 'viper'
     sfx.play('bulletCrack', { pos: best.p, volume: (pistol ? 0.55 : 0.9) * Math.min(1, 1.25 - best.d / 4), ref: 1.5, maxDistance: 12 })
   }
 
@@ -708,9 +715,11 @@ class Network {
     if (m.b) fx.blood(m.e)
     for (const e of ends) if (!m.b || e !== m.e) fx.impact(e, null)
     if (m.q) {
-      sfx.play('suppressed', { pos: m.o, ref: 2, maxDistance: 40, kind: m.w === 'sniper' ? 'sniper' : m.w === 'ar' || m.w === 'lmg' || m.w === 'shotgun' ? 'rifle' : 'pistol' })
+      const fam = baseOf(m.w)
+      sfx.play('suppressed', { pos: m.o, ref: 2, maxDistance: 40, kind: fam === 'sniper' ? 'sniper' : fam === 'ar' || fam === 'lmg' || fam === 'shotgun' ? 'rifle' : 'pistol' })
     } else {
-      const big = m.w === 'sniper' || m.w === 'viper' || m.w === 'shotgun' || m.w === 'lmg'
+      const cat = WEAPONS[m.w]?.category
+      const big = cat === 'sniper' || cat === 'shotgun' || cat === 'lmg' || m.w === 'viper' || m.w === 'dragoon'
       sfx.play(m.w, { pos: m.o, ref: big ? 10 : 5, maxDistance: big ? 220 : 160, volume: 0.9 })
     }
   }
@@ -767,7 +776,7 @@ class Network {
       runtime.view.shake = Math.min(2, runtime.view.shake + Math.max(0.35, 1.8 * (1 - d / 60)))
       return
     }
-    if (m.k === 'frag' || m.k === 'rocket') {
+    if (m.k === 'frag' || m.k === 'rocket' || m.k === 'semtex' || m.k === 'c4' || m.k === 'claymore') {
       fx.explosion(p)
       sfx.play('explosion', { pos: p, ref: 9, maxDistance: 160 })
       const l = runtime.local

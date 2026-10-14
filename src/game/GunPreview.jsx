@@ -1,13 +1,27 @@
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 
+import { weaponsIn } from '../shared/weapons.js'
 import { createWeaponModel } from './models/weaponModels.js'
 import StudioEnvironment from './StudioEnvironment.jsx'
 
 /**
  * Dev-only: `/?preview=guns` lays out every weapon with a spread of attachment
- * combinations, side-on (`&spin` to rotate them, `&only=N` for a close-up of one).
+ * combinations, side-on (`&spin` to rotate them, `&only=N` for a close-up of
+ * one). `&cat=ar` (or smg, sniper, lmg, pistol, lethal) lays out one category
+ * instead: each gun bare, then fully kitted.
  */
+const KITTED = {
+  ar: { optic: 'acog', muzzle: 'brake', under: 'grip', mag: 'fast' },
+  smg: { optic: 'holo', muzzle: 'suppressor', under: 'laser', mag: 'extended' },
+  sniper: { muzzle: 'suppressor', under: 'angled', mag: 'fast' },
+  lmg: { optic: 'reddot', muzzle: 'compensator', under: 'angled', mag: 'fast' },
+  pistol: { optic: 'reddot', muzzle: 'suppressor', under: 'laser', mag: 'extended' },
+}
+function categoryLineup(cat) {
+  if (cat === 'lethal') return ['frag', 'semtex', 'c4', 'claymore', 'detonator', 'flash', 'smoke'].map((id) => [id, {}])
+  return weaponsIn(cat).flatMap((id) => [[id, { optic: 'iron' }], [id, KITTED[cat] ?? {}]])
+}
 const LINEUP = [
   ['ar', { optic: 'iron', muzzle: 'none', mag: 'std' }],
   ['ar', { optic: 'reddot', muzzle: 'suppressor', mag: 'extended' }],
@@ -47,8 +61,11 @@ function Gun({ id, att, position }) {
 }
 
 export function GunPreview() {
-  const only = new URLSearchParams(window.location.search).get('only')
-  const list = only !== null ? [LINEUP[Number(only)] ?? LINEUP[0]] : LINEUP
+  const params = new URLSearchParams(window.location.search)
+  const only = params.get('only')
+  const cat = params.get('cat')
+  const lineup = cat ? categoryLineup(cat) : LINEUP
+  const list = only !== null ? [lineup[Number(only)] ?? lineup[0]] : lineup
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#1a1814' }}>
       <Canvas camera={{ position: [0, 0, only !== null ? 1.1 : 3.9], fov: 40 }}>

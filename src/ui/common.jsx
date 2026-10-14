@@ -1,8 +1,10 @@
 import { useState } from 'react'
 
 import { net } from '../net/network.js'
+import { baseOf } from '../shared/weapons.js'
 import { useGameStore } from '../store/gameStore.js'
 import { uiClick, uiHover } from './uiUtils.js'
+import { useWeaponIcon } from './weaponIcons.js'
 
 /** Themed button with hover/click ticks. */
 export function Button({ className = '', onClick, children, ...props }) {
@@ -38,6 +40,10 @@ const PATHS = {
   lmg: 'M1 8h7l2-2h4l1-2h10l1 2h6v1h20v2h3v2h-3v1H34l-1 1h-2v6h-8v-6h-2l-1 5h-4l1-5h-4l-6 4H1zM43 12l-3 8h2l3-8zM46 12l2 8h2l-2-8z',
   rpg: 'M1 7h4l2 1h33l3-2h6l6 2h3v4h-3l-6 2h-6l-3-2H30l-1 6h-3l1-6h-8l-1 6h-3l1-6H7l-2 1H1z',
   frag: 'M10 4h4v2h2a6 6 0 1 1-8 0h2z',
+  semtex: 'M5 9h14v8H5zM8 6h8v3H8zM11 3h2v3h-2zM4 17h16v2H4z',
+  c4: 'M2 8h20v10H2zM6 8V5h5v3zM14 4l1-2h1l-1 6h-1zM5 11v4h1v-4zM18 11v4h1v-4z',
+  claymore: 'M2 6q10 -3 20 0v9q-10 -3 -20 0zM5 15l-2 6h2l2-6zM19 15l2 6h-2l-2-6zM11 3h2v3h-2z',
+  detonator: 'M6 6h10v14H6zM14 2h2v4h-2zM9 9h4v3H9z',
   flash: 'M8 3h8v2h-1v12h1v2H8v-2h1V5H8z',
   smoke: 'M8 3h8v2h-1v12h1v2H8v-2h1V5H8zM11 8h2v6h-2z',
   fall: 'M10 2l6 8h-4v10h-4V10H4z',
@@ -56,6 +62,10 @@ const VIEWBOX = {
   lmg: '0 0 56 21',
   rpg: '0 0 60 20',
   frag: '0 0 24 22',
+  semtex: '0 0 24 22',
+  c4: '0 0 24 22',
+  claymore: '0 0 24 22',
+  detonator: '0 0 22 22',
   flash: '0 0 24 22',
   smoke: '0 0 24 22',
   fall: '0 0 20 22',
@@ -63,10 +73,19 @@ const VIEWBOX = {
   bomb: '0 0 24 22',
 }
 
-export function Icon({ name, height = 16, color = 'currentColor', style }) {
-  const d = PATHS[name] ?? PATHS.ar
+/** `maxWidth` shrinks a long gun (a sniper, say) to fit a box instead of overflowing it. */
+export function Icon({ name, height = 16, maxWidth, color = 'currentColor', style }) {
+  // Guns: the gun's own silhouette (drawn from its model); until it's drawn, its family's.
+  const gun = useWeaponIcon(name)
+  if (gun) {
+    const h = maxWidth ? Math.min(height, maxWidth / gun.aspect) : height
+    const mask = `url(${gun.url})`
+    return <span aria-hidden style={{ display: 'block', flex: 'none', height: h, width: Math.round(h * gun.aspect), backgroundColor: color, WebkitMaskImage: mask, maskImage: mask, WebkitMaskSize: '100% 100%', maskSize: '100% 100%', ...style }} />
+  }
+  const shape = PATHS[name] ? name : PATHS[baseOf(name)] ? baseOf(name) : 'ar'
+  const d = PATHS[shape]
   return (
-    <svg viewBox={VIEWBOX[name] ?? VIEWBOX.ar} height={height} style={{ fill: color, display: 'block', ...style }} aria-hidden>
+    <svg viewBox={VIEWBOX[shape]} height={height} style={{ fill: color, display: 'block', maxWidth, ...style }} aria-hidden>
       <path d={d} />
     </svg>
   )
