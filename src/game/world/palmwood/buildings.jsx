@@ -355,8 +355,9 @@ function buildBuilding(b) {
   return P.build()
 }
 
-export function Building({ id }) {
-  const parts = useMemo(() => once(`pw:building:${id}`, () => buildBuilding(buildingOf(id))), [id])
+/** `of` looks the building up (another map's shacks use this model too: Old Quarter's). */
+export function Building({ id, of = buildingOf }) {
+  const parts = useMemo(() => once(`pw:building:${id}`, () => buildBuilding(of(id))), [id, of])
   return <Merged parts={parts} />
 }
 

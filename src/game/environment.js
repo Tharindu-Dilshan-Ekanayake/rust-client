@@ -13,7 +13,9 @@ export const STORM_WIND = [7.2, 0, 3.2]
  * colours and long views to the mountains; Palmwood a hot tropical morning,
  * high sun, blue sky and saturated greens; Hollow Creek Halloween night: the
  * moon (the "sun" here) high over the church, cold blue light and long
- * shadows, the warm glow of the town's lamps and pumpkins coming from below.
+ * shadows, the warm glow of the town's lamps and pumpkins coming from below;
+ * Old Quarter a clear, hot afternoon: no haze, no dust, no vignette or grain,
+ * just strong sun and clean colour.
  */
 export const ENVIRONMENTS = {
   dustline: {
@@ -119,6 +121,36 @@ ENVIRONMENTS.hollow = {
     grain: 0.03,
     dust: [0.06, 0.07, 0.14],
     lift: 0.035,
+  },
+}
+
+ENVIRONMENTS.quarter = {
+  sunDir: new Vector3(-0.42, 0.72, 0.55).normalize(),
+  fog: '#d6dde4',
+  fogNear: 90,
+  fogFar: 420,
+  sky: { horizon: '#d8e2ea', mid: '#a9c4dc', zenith: '#5f8fc4', sun: '#fff3dc', storm: 0, below: [0.62, 0.55, 0.44] },
+  hemi: ['#e6eef6', '#6a5a44', 0.9],
+  bounce: ['#e2cfae', 0.5],
+  ambient: ['#80786a', 0.3],
+  sun: ['#fff1d8', 2.8],
+  envIntensity: 0.6,
+  storm: false,
+  shadowSpan: 62,
+  menuCam: { radius: 52, height: 22, look: [0, 4, -4] },
+  vm: { ambient: ['#7d786e', 0.35], hemi: ['#eef2f6', '#4c4636', 0.7], sun: ['#fff1d8', 1.15] },
+  // Clean: nothing laid over the picture (no vignette, grain, dust or bleach).
+  grade: {
+    exposure: 1.02,
+    contrast: 1.05,
+    saturation: 1.04,
+    shadowTint: [0, 0, 0],
+    highlightTint: [0, 0, 0],
+    vignette: 0,
+    bleach: 0,
+    grain: 0,
+    dust: [0, 0, 0],
+    lift: 0,
   },
 }
 
