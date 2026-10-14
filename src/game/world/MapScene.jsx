@@ -2,13 +2,14 @@ import { memo, useEffect } from 'react'
 
 import { useActiveMap } from '../../store/gameStore.js'
 import AcresMap from './acres/AcresMap.jsx'
+import BrambleMap from './bramble/BrambleMap.jsx'
 import DustlineMap from './DustlineMap.jsx'
 import HollowMap from './hollow/HollowMap.jsx'
 import PalmwoodMap from './palmwood/PalmwoodMap.jsx'
 import { prewarmOtherMaps } from './prewarm.js'
 import QuarterMap from './quarter/QuarterMap.jsx'
 
-const SCENES = { dustline: DustlineMap, acres: AcresMap, palmwood: PalmwoodMap, hollow: HollowMap, quarter: QuarterMap }
+const SCENES = { dustline: DustlineMap, acres: AcresMap, palmwood: PalmwoodMap, hollow: HollowMap, quarter: QuarterMap, bramble: BrambleMap }
 
 /**
  * The map on screen (the room's, or the one picked in the menus): its art and

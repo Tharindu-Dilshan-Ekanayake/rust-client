@@ -376,17 +376,6 @@
   width: 330px;
   padding: 12px 14px 14px;
 }
-.dl-mapcard .dl-label {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 9px;
-}
-.dl-mapcard .dl-label .hint {
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--muted);
-}
 
 /* ---- generic two-column layout (class editor, etc.) ---------------------------- */
 
@@ -1629,11 +1618,12 @@
   min-height: 300px;
 }
 
-/* Map picker: the maps above the mode cards, each with its plan as a thumbnail. */
+/* Map picker: the maps above the mode cards (and on the main menu's map card), each with its plan as a thumbnail. */
 .dl-mappick {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 .dl-maptile {
   pointer-events: auto;
@@ -1705,51 +1695,153 @@
   color: #1a1206;
   background: var(--accent);
 }
-/* Quick play: the five maps side by side in one row, so the mode cards and
-   the class strip below them keep their room on a 720 px screen. The tiles
-   show the maps' short names, tight enough that the longest word of any
-   (PALMWOOD, DUSTLINE) fits a tile a fifth of the row wide. */
-.dl-mappick:not(.compact) {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+/* Over the maps: how many there are, which are showing, arrows to page through. */
+.dl-mappick-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  font-family: var(--head);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dl-mappick-bar .count {
+  font-family: var(--body);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: none;
+}
+.dl-mappick-bar .nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dl-mappick-bar .range {
+  font-family: var(--body);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  margin-right: 2px;
+}
+.dl-mappick-bar .arrow {
+  pointer-events: auto;
+  appearance: none;
+  cursor: pointer;
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.35);
+  transition:
+    border-color var(--fast),
+    color var(--fast);
+}
+.dl-mappick-bar .arrow:hover:not(:disabled),
+.dl-mappick-bar .arrow:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.dl-mappick-bar .arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.dl-touch .dl-mappick-bar .arrow {
+  width: 44px;
+  height: 34px;
+  font-size: 16px;
+}
+/* The maps themselves: three showing, the rest scroll (snapping to a tile),
+   the edge fading out where there are more past it. */
+.dl-mappick-list {
+  --fade-a: 0px;
+  --fade-b: 0px;
+  pointer-events: auto;
+  display: grid;
+  gap: 8px;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(var(--fade-dir), transparent 0, #000 var(--fade-a), #000 calc(100% - var(--fade-b)), transparent 100%);
+  mask-image: linear-gradient(var(--fade-dir), transparent 0, #000 var(--fade-a), #000 calc(100% - var(--fade-b)), transparent 100%);
+}
+.dl-mappick-list::-webkit-scrollbar {
+  display: none;
+}
+.dl-mappick-list.more-before {
+  --fade-a: 22px;
+}
+.dl-mappick-list.more-after {
+  --fade-b: 22px;
+}
+.dl-mappick-list > .dl-maptile {
+  scroll-snap-align: start;
+}
+/* No lift on hover in a scrolling list: it would be cut off at the edge. */
+.dl-mappick-list > .dl-maptile:hover,
+.dl-mappick-list > .dl-maptile:focus-visible {
+  transform: none;
+}
+/* Quick play: one row, three across, small enough that the mode cards and the
+   class strip below keep their room on a 720 px screen. The tiles show the
+   maps' short names; the longest (BRAMBLEWOOD) fits a third of the row. */
+.dl-mappick.row .dl-mappick-list {
+  --fade-dir: to right;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 16px) / 3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+}
+.dl-mappick.row .dl-maptile {
+  padding: 7px;
   gap: 8px;
 }
-.dl-mappick:not(.compact) .dl-maptile {
-  padding: 7px;
-  gap: 7px;
+.dl-mappick.row .dl-maptile img {
+  width: 40px;
+  height: 40px;
 }
-.dl-mappick:not(.compact) .dl-maptile img {
-  width: 36px;
-  height: 36px;
-}
-.dl-mappick:not(.compact) .dl-maptile strong {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  font-size: 13.5px;
-  letter-spacing: 0.4px;
+.dl-mappick.row .dl-maptile strong {
+  font-size: 14px;
+  letter-spacing: 0.6px;
   line-height: 1.1;
-  white-space: normal;
 }
-.dl-mappick:not(.compact) .dl-maptile small {
+.dl-mappick.row .dl-maptile small {
   font-size: 10.5px;
 }
-/* The tag sits on the thumbnail's corner, clear of a name on one line. */
-.dl-mappick:not(.compact) .dl-maptile .dl-tag.new {
+/* The tag sits on the thumbnail's corner, clear of the name. */
+.dl-mappick.row .dl-maptile .dl-tag.new {
   top: 4px;
   left: 4px;
   right: auto;
   padding: 1px 4px;
   font-size: 9px;
 }
-@container (max-width: 640px) {
-  .dl-mappick:not(.compact) {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-/* Stacked and smaller on the main menu's map card. */
+/* The main menu's map card: a column three tall. */
 .dl-mappick.compact {
-  grid-template-columns: 1fr;
-  gap: 8px;
+  --tile-h: 64px;
+}
+.dl-touch .dl-mappick.compact {
+  --tile-h: 82px;
+}
+.dl-mappick.compact .dl-mappick-list {
+  --fade-dir: to bottom;
+  grid-auto-rows: var(--tile-h);
+  max-height: calc(var(--tile-h) * 3 + 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
 }
 .dl-mappick.compact .dl-maptile {
   padding: 8px 10px;
@@ -1935,6 +2027,8 @@
   letter-spacing: 1.5px;
   text-transform: uppercase;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dl-play-footer .loadout {
   display: inline-flex;

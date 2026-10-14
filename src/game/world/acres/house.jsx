@@ -199,7 +199,7 @@ function buildHouse(h) {
   const ceiling = look.lit ? acres.ceilingLit(look.lit) : acres.ceiling()
   for (const s of disjoint(h.slabs ?? [])) {
     const y = h.floors[1].y
-    P.aabb(acres.carpet(CARPET[h.id]), s.x0, y - 0.02, s.z0, s.x1, y, s.z1, 1.5)
+    P.aabb(look.upperFloor ? floorMaterial(look.upperFloor) : acres.carpet(CARPET[h.id]), s.x0, y - 0.02, s.z0, s.x1, y, s.z1, 1.5)
     P.aabb(ceiling, s.x0, y - SLAB_T, s.z0, s.x1, y - 0.02, s.z1, 2)
   }
   // (A flat roof is its own ceiling: see below.)

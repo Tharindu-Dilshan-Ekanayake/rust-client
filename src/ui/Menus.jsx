@@ -66,6 +66,15 @@ const MAP_TIPS = {
     ['The garden sheds', ' next to the two big houses have ammo crates that refill everything.'],
     ['The witch on the roundabout', ' is solid cover right in the middle of town.'],
   ],
+  bramble: [
+    ['The dry creek is a trench.', ' Drop into its bed to cross the middle out of sight; crouch to get under the bridge and the boardwalk.'],
+    ['Climb the water tower', ' to watch the whole field. The ladder is the only way up.'],
+    ['The barn has a hayloft.', ' The stairs run up the inside of its east wall, and its north window looks down the field.'],
+    ['The bridge’s low walls and the burnt-out tank', ' are solid cover in the middle of the map.'],
+    ['Hay bales, hedges and the ruin’s broken walls', ' stop bullets. Tall grass and bushes only hide you.'],
+    ['The sheds in the meadow and behind the houses', ' have ammo crates that refill everything.'],
+    ['Rail fences', ' stop you, not bullets.'],
+  ],
 }
 const tipsFor = (mapId) => [...COMMON_TIPS, ...(MAP_TIPS[mapId] ?? [])]
 
@@ -225,10 +234,6 @@ export function MainMenu() {
       </div>
       {/* Pick the map right here; the scene behind the menu switches to it. */}
       <div className="dl-panel dl-mapcard dl-slide-up">
-        <div className="dl-label">
-          <span>Map</span>
-          <span className="hint">{IS_TOUCH ? 'Tap' : 'Click'} to change</span>
-        </div>
         <MapPicker compact />
       </div>
     </div>

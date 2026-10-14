@@ -76,6 +76,9 @@ export const SIDING = {
   oat: { color: '#d6cbb0' },
   plum: { color: '#6a4a62' },
   tealgrey: { color: '#5f7a7a' },
+  // Bramblewood's weathered farm buildings.
+  weathered: { color: '#a49c8e' },
+  barnGrey: { color: '#b4ac9c', tex: 'board' },
 }
 export const ROOFS = { slate: '#5d6873', charcoal: '#6b7480', red: '#a2483a', teal: '#3f817b', concrete: '#bdb8ae' }
 export const TRIM = { white: '#f6f4ec', concrete: '#c9c4b8', teal: '#3f817b', bone: '#d9d2c2', walnut: '#4a3426' }
@@ -102,7 +105,8 @@ export const acres = {
   roadLine: () => solid('a:roadLine', '#e8c547', 'matte'),
   siding: (name) => {
     const s = SIDING[name] ?? SIDING.white
-    const map = s.tex === 'plaster' ? plasterTexture() : s.tex === 'panel' ? panelTexture() : sidingTexture()
+    // 'board': vertical boards and battens (a barn), from the fence-board texture.
+    const map = s.tex === 'plaster' ? plasterTexture() : s.tex === 'panel' ? panelTexture() : s.tex === 'board' ? fenceBoardTexture() : sidingTexture()
     // Plaster-finished walls match the inside walls (same texture, same roughness).
     return std(`a:siding:${name}`, { map, color: s.color, roughness: s.tex === 'plaster' ? 0.92 : 0.85, metalness: 0 })
   },
