@@ -17,7 +17,10 @@ export const STORM_WIND = [7.2, 0, 3.2]
  * Old Quarter a clear, hot afternoon: no haze, no dust, no vignette or grain,
  * just strong sun and clean colour; Bramblewood a soft, bright day under high
  * cloud, lush greens, a little depth haze over the field and nothing laid
- * over the picture.
+ * over the picture; Skyport Terminal dusk after a battle: the sun low and red
+ * in the west through a pall of smoke, the sky dark with it overhead, the
+ * haze thick and brown; inside, the power out, only the light through the
+ * glass and the holes; a drained, gritty grade with a vignette.
  */
 export const ENVIRONMENTS = {
   dustline: {
@@ -183,6 +186,37 @@ ENVIRONMENTS.bramble = {
     grain: 0,
     dust: [0, 0, 0],
     lift: 0,
+  },
+}
+
+ENVIRONMENTS.terminal = {
+  sunDir: new Vector3(-0.78, 0.38, 0.5).normalize(),
+  fog: '#463e3a',
+  fogNear: 35,
+  fogFar: 360,
+  sky: { horizon: '#544640', mid: '#3c3536', zenith: '#1e1e24', sun: '#d8946a', storm: 1, below: [0.07, 0.065, 0.06] },
+  hemi: ['#9a9ca6', '#5a504a', 1.2],
+  // Firelight from the burning apron, low on the side away from the sun.
+  bounce: ['#ff8a4a', 0.24],
+  ambient: ['#5a5660', 0.5],
+  sun: ['#e8aa82', 1.45],
+  envIntensity: 0.32,
+  storm: false,
+  shadowSpan: 72,
+  menuCam: { radius: 72, height: 24, look: [0, 4, -8] },
+  vm: { ambient: ['#4e4a52', 0.36], hemi: ['#8a8c96', '#2a2420', 0.42], sun: ['#f0b48c', 0.55] },
+  // Gritty: drained colour, bleach-bypass contrast, cold shadows and burnt highlights, grain and a vignette.
+  grade: {
+    exposure: 1.15,
+    contrast: 1.1,
+    saturation: 0.72,
+    shadowTint: [-0.006, 0.0, 0.014],
+    highlightTint: [0.03, 0.012, -0.02],
+    vignette: 0.38,
+    bleach: 0.16,
+    grain: 0.03,
+    dust: [0.1, 0.085, 0.075],
+    lift: 0.025,
   },
 }
 

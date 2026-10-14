@@ -20,6 +20,8 @@ export const fx = {
   explosion: noop,
   /** Small dust burst (smoke grenade pop, landing). */
   puff: noop,
+  /** A pane of glass bursting: shards from each of `points`, thrown along `dir` (the bullet's) if given. */
+  glass: noop,
 }
 
 export function registerFx(impl) {

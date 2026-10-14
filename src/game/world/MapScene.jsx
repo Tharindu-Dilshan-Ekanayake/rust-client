@@ -8,8 +8,9 @@ import HollowMap from './hollow/HollowMap.jsx'
 import PalmwoodMap from './palmwood/PalmwoodMap.jsx'
 import { prewarmOtherMaps } from './prewarm.js'
 import QuarterMap from './quarter/QuarterMap.jsx'
+import TerminalMap from './terminal/TerminalMap.jsx'
 
-const SCENES = { dustline: DustlineMap, acres: AcresMap, palmwood: PalmwoodMap, hollow: HollowMap, quarter: QuarterMap, bramble: BrambleMap }
+const SCENES = { dustline: DustlineMap, acres: AcresMap, palmwood: PalmwoodMap, hollow: HollowMap, quarter: QuarterMap, bramble: BrambleMap, terminal: TerminalMap }
 
 /**
  * The map on screen (the room's, or the one picked in the menus): its art and

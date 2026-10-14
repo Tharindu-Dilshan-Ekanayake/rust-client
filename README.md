@@ -2,7 +2,7 @@
 
 **Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
 with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch,
-Free-for-all or [Search & Destroy](#search--destroy), on six maps (picked on
+Free-for-all or [Search & Destroy](#search--destroy), on seven maps (picked on
 the *Find a match* screen, see [Maps](#maps)).
 
 *Atomic Acres* (84 × 84 m, the default) is a 1950s test-site suburb. A school
@@ -73,16 +73,47 @@ drawn from its model (`ui/weaponIcons.js`).
 
 Each map is data in `shared/` (`map.js` for Dustline, `mapAcres.js` for
 Atomic Acres, `mapPalmwood.js` for Palmwood, `mapHollow.js` for Hollow Creek,
-`mapQuarter.js` for Old Quarter, `mapBramble.js` for Bramblewood, helpers in
-`mapKit.js`), listed in
+`mapQuarter.js` for Old Quarter, `mapBramble.js` for Bramblewood,
+`mapTerminal.js` for Skyport Terminal, helpers in `mapKit.js`), listed in
 `shared/maps.js`: its colliders, ladders, spawns, resupply crates, bot
 navigation hints and bounds. The client draws the map on screen
 (`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/`,
-`world/palmwood/`, `world/hollow/`, `world/quarter/` or `world/bramble/`) with that map's sky and light
+`world/palmwood/`, `world/hollow/`, `world/quarter/`, `world/bramble/` or
+`world/terminal/`) with that map's sky and light
 (`game/environment.js`) and sound (`game/ambience.js`); the minimap, ladders,
 effects and menu camera all follow the active map.
 
-- **Bramblewood** (104 × 104 m, the newest and the biggest): an abandoned
+- **Skyport Terminal** (112 × 112 m, the newest and the biggest): an airport
+  after a battle, at dusk under a pall of smoke. North, the terminal, an L: the
+  main block (two floors, a double-height hall under skylights, escalators and
+  a grand stair; check-in and security west, the shops, café and gate lounges
+  east; the Sky Lounge, the VIP lounge and Gate 3 upstairs) and its leg running
+  south down the east side (the baggage hall, more gates upstairs, one bay of
+  its upper floor fallen in a single slab you can run up, under the hole
+  blown in its roof; a hole blown through its south end). In front of it,
+  nose-in at Gate 3, a wide-body jet: in by the jet bridge (a steel tube with
+  a small window each side) to its front door, down the escape slide, out onto
+  both wings, down the airstairs at the back. Across the south-west of the
+  apron a crashed narrow-body lies broken in three, burning: walk through its
+  middle and nose sections (one tunnel), into the tail at its break; its torn
+  wing and engines burn beside it. Sandbags, barricades, rubble, makeshift
+  plywood and sheet-steel walls, boarded windows, knocked-over planters and
+  tables; burnt-out cars, shell craters, fires and smoke columns on the
+  horizon; behind the toilets a hideout (camp beds, a radio, the ammo crate)
+  in through a hole in the toilets' wall or a gap half hidden by a fallen shelf.
+  Search & Destroy: site A inside the terminal (the east hall's gate lounge),
+  site B inside the jet (the cabin by the over-wing exits).
+  - Glass breaks: the first bullet (or a knife, a grenade, a blast) into a
+    pane shatters it with the sound of it, and stops there; the next goes
+    through the gap, and so can you. The server decides (`state.glass`, a
+    bitmask of `map.glass`, see `shared/glass.js`); the shooter's client
+    breaks it at once; every client draws the panes as one instanced mesh
+    (`world/GlassPanes.jsx`) with a collider for each still whole. A new
+    match or round mends it all.
+  - Dark on purpose: the power's out (a few lights and the red emergency lamps
+    lit), a drained, gritty grade with a vignette; the jet bridge and the
+    cabin keep their own lights.
+- **Bramblewood** (104 × 104 m): an abandoned
   farm town the woods have taken back, made for long sightlines. North-east, a
   big field of old furrows and round hay bales with a tractor left in it, the
   water tower beside it (one ladder up to its deck, the best view of the field)

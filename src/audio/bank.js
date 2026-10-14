@@ -904,6 +904,22 @@ const FOLEY = {
     for (let i = 0; i < 3; i++) metalLayer(o, r, { start: i * (0.05 + r() * 0.05), base: 3600 + r() * 1600, partials: [1, 2.2, 3.9], tau: 0.025, gain: 0.5 / (i + 1) })
     return o
   },
+  glassBreak: (r) => {
+    // A pane going: the hit's sharp crack, the sheet bursting (a bright hiss and a spray
+    // of pings as it breaks up), then the shards raining down and tinkling for a second.
+    const o = buf(1.5)
+    clickLayer(o, r, { freq: 5200, q: 2, tau: 0.003, gain: 1 })
+    toneLayer(o, { dur: 0.05, tau: 0.012, from: 420, to: 180, gain: 0.35 })
+    noiseLayer(o, r, { dur: 0.35, tau: 0.09, att: 0.001, type: 'highpass', freq: 3200, gain: 0.8 })
+    noiseLayer(o, r, { dur: 0.25, tau: 0.06, att: 0.001, type: 'bandpass', freq: 6500, q: 0.8, gain: 0.5 })
+    for (let i = 0; i < 24; i++) metalLayer(o, r, { start: 0.004 + Math.pow(r(), 1.8) * 0.18, base: 2800 + r() * 5200, partials: [1, 2.3, 3.7], tau: 0.012 + r() * 0.02, gain: 0.14 + r() * 0.1 })
+    for (let i = 0; i < 40; i++) {
+      const t = 0.12 + Math.pow(r(), 1.5) * 1.1
+      metalLayer(o, r, { start: t, base: 3200 + r() * 6000, partials: [1, 2.4, 4.1], tau: 0.008 + r() * 0.015, gain: (0.1 + r() * 0.1) * (1 - (t - 0.12) * 0.6) })
+    }
+    grains(o, r, 0.15, 0.9, 30, 4000, 9000, 0.12)
+    return o
+  },
   impact: (r) => {
     const o = buf(0.25)
     toneLayer(o, { dur: 0.06, tau: 0.01, from: 300, to: 140, gain: 0.5 })
@@ -1319,6 +1335,7 @@ const FOLEY_LEVEL = {
   shellsDrop: 0.45,
   rocketSlide: 0.6,
   rocketSeat: 0.85,
+  glassBreak: 0.95,
 }
 
 /** name -> [render(seed) -> Float32Array], with how many variations to keep. */
@@ -1337,7 +1354,7 @@ function recipes() {
   list.push(['suppressedRifle', 3, (s) => suppressed('rifle', s)])
   list.push(['suppressedPistol', 3, (s) => suppressed('pistol', s)])
   list.push(['suppressedSniper', 2, (s) => suppressed('sniper', s)])
-  const counts = { stepSand: 8, stepMetal: 4, ladderRung: 4, impact: 4, brass: 3, knifeSwing: 3, knifeHit: 2, breathIn: 2, breathOut: 2, magIn: 3, boltSlam: 3, magOut: 3, chargePull: 3 }
+  const counts = { stepSand: 8, stepMetal: 4, ladderRung: 4, impact: 4, glassBreak: 3, brass: 3, knifeSwing: 3, knifeHit: 2, breathIn: 2, breathOut: 2, magIn: 3, boltSlam: 3, magOut: 3, chargePull: 3 }
   for (const [name, fn] of Object.entries(FOLEY)) {
     list.push([name, counts[name] ?? 2, (s) => finish(fn(rng(s)), { level: FOLEY_LEVEL[name] ?? 0.85 })])
   }

@@ -8,6 +8,8 @@ import { chestPoint, hitboxFor, rayHitbox } from '../../shared/hitbox.js'
 import { attachmentsFor, DEFAULT_CLASS, effectiveWeapon, EQUIPMENT, PUMP_RACK_TIME, reloadDuration, shellsToLoad, WEAPONS } from '../../shared/weapons.js'
 import { useGameStore } from '../../store/gameStore.js'
 import { fx } from '../fx/fxApi.js'
+import { KNIFE_GLASS_REACH } from '../../shared/glass.js'
+import { glassAlong, shatterLocal } from '../glass.js'
 import { castMap } from '../physicsQueries.js'
 import { runtime } from '../runtime.js'
 import { input, isDown, wasPressed, wasReleased } from './input.js'
@@ -226,7 +228,9 @@ export class WeaponSystem {
     const o = [cam.position.x, cam.position.y, cam.position.z]
     const d = [_dir.x, _dir.y, _dir.z]
     const mapHit = castMap(o, d, w.range, BULLET_GROUPS, true)
-    const maxT = mapHit ? mapHit.toi : w.range
+    // A whole pane of glass in the way stops this bullet (and breaks); the next goes through.
+    const pane = glassAlong(o, d, mapHit ? mapHit.toi : w.range)
+    const maxT = pane ? pane.t : mapHit ? mapHit.toi : w.range
 
     let best = null
     for (const t of enemyTargets()) {
@@ -238,6 +242,7 @@ export class WeaponSystem {
 
     fx.tracer(runtime.local.muzzle, end, w.id, true)
     if (best) fx.blood(end)
+    else if (pane) shatterLocal(pane.i, d)
     else if (mapHit) {
       fx.impact(end, mapHit.normal)
       if (dist < 25) sfx.play('impact', { pos: end, volume: 0.6, ref: 2 })
@@ -286,7 +291,8 @@ export class WeaponSystem {
       _dir.copy(_fwd).addScaledVector(_right, Math.cos(th) * r).addScaledVector(_up, Math.sin(th) * r).normalize()
       const d = [_dir.x, _dir.y, _dir.z]
       const mapHit = castMap(o, d, w.range, BULLET_GROUPS, true)
-      const maxT = mapHit ? mapHit.toi : w.range
+      const pane = glassAlong(o, d, mapHit ? mapHit.toi : w.range)
+      const maxT = pane ? pane.t : mapHit ? mapHit.toi : w.range
       let best = null
       for (const t of enemyTargets()) {
         const hit = rayHitbox(o, d, hitboxFor(t.pos.x, t.pos.y, t.pos.z, t.renderStance ?? 0, t.yaw))
@@ -298,7 +304,8 @@ export class WeaponSystem {
       if (best) {
         if (!blooded) fx.blood(e)
         blooded = true
-      } else if (mapHit && i % 2 === 0) fx.impact(e, mapHit.normal)
+      } else if (pane) shatterLocal(pane.i, d)
+      else if (mapHit && i % 2 === 0) fx.impact(e, mapHit.normal)
       pellets.push({ d, e, h: best?.id, z: best?.zone })
     }
     if (!blooded && pellets[0]) sfx.play('impact', { pos: pellets[0].e, volume: 0.5, ref: 2 })
@@ -455,7 +462,17 @@ export class WeaponSystem {
     // Quick-melee hit lands a beat after the swing starts.
     if (this.meleeHitAt && now >= this.meleeHitAt) {
       this.meleeHitAt = 0
-      net.send('ml', this.meleeTarget ? { h: this.meleeTarget } : {})
+      // No one to hit: a pane of glass in front of the blade breaks.
+      let pane = null
+      if (!this.meleeTarget && ctx.camera) {
+        ctx.camera.getWorldDirection(_fwd)
+        const o = [ctx.camera.position.x, ctx.camera.position.y, ctx.camera.position.z]
+        const d = [_fwd.x, _fwd.y, _fwd.z]
+        const wall = castMap(o, d, KNIFE_GLASS_REACH, BULLET_GROUPS)
+        pane = glassAlong(o, d, wall ? wall.toi : KNIFE_GLASS_REACH)
+        if (pane) shatterLocal(pane.i, d)
+      }
+      net.send('ml', this.meleeTarget ? { h: this.meleeTarget } : pane ? { g: pane.i } : {})
       if (this.meleeTarget) sfx.play('knifeHit', { volume: 0.95 })
     }
 

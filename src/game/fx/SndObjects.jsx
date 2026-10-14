@@ -52,7 +52,10 @@ function glowTexture() {
   return new CanvasTexture(c)
 }
 
-const decalProps = { transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }
+// (Depth-offset harder than any floor layer or soot under it, so the paint always shows.)
+const decalProps = { transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -16 }
+/** How far over the floor's collider the paint sits: clear of floors drawn a few cm above theirs (Skyport's stone, carpet). */
+const LIFT = 0.07
 
 function SiteMark({ site }) {
   const tex = useMemo(() => letterTexture(site.id), [site.id])
@@ -66,11 +69,11 @@ function SiteMark({ site }) {
     tries.current++
     const hit = castMap([x, y + 2.5, z], [0, -1, 0], 5)
     if (!hit) return
-    ref.current.position.y = y + 2.5 - hit.toi + 0.03
+    ref.current.position.y = y + 2.5 - hit.toi + LIFT
     tries.current = Infinity
   })
   return (
-    <group ref={ref} position={[x, y + 0.03, z]}>
+    <group ref={ref} position={[x, y + LIFT, z]}>
       <mesh rotation-x={-Math.PI / 2} renderOrder={2}>
         <ringGeometry args={[SND.siteRadius - 0.16, SND.siteRadius, 64]} />
         <meshBasicMaterial color="#f2a33a" opacity={0.6} {...decalProps} />

@@ -4,6 +4,7 @@ import { reloadFoley } from '../audio/bank.js'
 import { sfx } from '../audio/sfx.js'
 import { getBloxityState, useBloxityStore } from '../bloxity/store.js'
 import { fx } from '../game/fx/fxApi.js'
+import { resetGlass, syncGlass } from '../game/glass.js'
 import { releaseLock } from '../game/player/input.js'
 import { lineClear } from '../game/physicsQueries.js'
 import { emit, runtime } from '../game/runtime.js'
@@ -181,6 +182,8 @@ class Network {
     this.unsubAvatar?.()
     this.unsubAvatar = null
     this.room = null
+    this.glassSeen = undefined
+    resetGlass()
     this.buffers.clear()
     runtime.remotes.clear()
     runtime.local.alive = false
@@ -403,6 +406,12 @@ class Network {
   }
 
   onState(state) {
+    // Breakable glass: the room's broken panes (shattering the new ones).
+    const glassNow = state.glass ?? ''
+    if (glassNow !== this.glassSeen) {
+      this.glassSeen = glassNow
+      syncGlass(glassNow)
+    }
     const now = performance.now()
     const myId = this.room?.sessionId
     let idsChanged = false

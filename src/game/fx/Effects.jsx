@@ -178,7 +178,7 @@ function randomDir(spreadUp = 0) {
  * walls — the war going on around the map.
  * rate: smoke particles/s; size: [start, end]; rise: m/s; life: s.
  */
-/** Fires and smoke of a map: its burning wrecks, and (on Dustline) columns on the horizon. */
+/** Fires and smoke of a map: its burning wrecks, and (on Dustline and Skyport) columns on the horizon. */
 const plumeCache = new Map()
 function plumesOf(map) {
   if (plumeCache.has(map.id)) return plumeCache.get(map.id)
@@ -186,8 +186,10 @@ function plumesOf(map) {
     const seat = e.fire ?? e.smoke
     const o = yawOffset(e.p, seat[0], seat[2], e.rotY)
     const p = [o[0], e.p[1] + seat[1], o[2]]
+    // (A fire's seat may give its size as a 4th number: a burning airliner's bigger than a car.)
+    const k = e.fire ? (seat[3] ?? 1) : 1
     return e.fire
-      ? { p, rate: 6, size: [1.0, 6.5], rise: 1.9, life: 7.5, spread: 0.7, dark: 0.06, fire: true }
+      ? { p, rate: 6 * k, size: [1.0 * k, 6.5 * k], rise: 1.9, life: 7.5, spread: 0.7 * k, dark: 0.06, fire: true, scale: k }
       : { p, rate: 3, size: [0.6, 3.8], rise: 1.1, life: 5.5, spread: 0.4, dark: 0.2 }
   })
   const horizon =
@@ -198,7 +200,14 @@ function plumesOf(map) {
           { p: [24, 4, -70], rate: 4, size: [7, 24], rise: 3.6, life: 15, spread: 3.5, dark: 0.11 },
           { p: [-40, 3, 64], rate: 3, size: [5, 16], rise: 2.6, life: 12, spread: 2.5, dark: 0.15 },
         ]
-      : []
+      : map.id === 'terminal'
+        ? [
+            // The fuel farm burning to the north-east, the town behind the terminal, something to the south.
+            { p: [160, 6, -105], rate: 2, size: [8, 26], rise: 3.6, life: 14, spread: 4, dark: 0.08 },
+            { p: [-115, 4, -95], rate: 1.6, size: [7, 22], rise: 3.2, life: 13, spread: 3, dark: 0.1 },
+            { p: [85, 4, 125], rate: 1.6, size: [7, 22], rise: 3.2, life: 13, spread: 3, dark: 0.1 },
+          ]
+        : []
   const list = [...wrecks, ...horizon]
   plumeCache.set(map.id, list)
   return list
@@ -376,6 +385,32 @@ export function Effects() {
       muzzle(point, weapon) {
         flashLight(toArr(point), '#ffb35a', WEAPONS[weapon]?.category === 'sniper' ? 26 : 14, 60, 9)
       },
+      glass(points, dir) {
+        const d = dir ? toArr(dir) : [0, 0, 0]
+        for (const p of points) {
+          const s = 1 + Math.random() * 2.6
+          sys.glow.spawn(p, [d[0] * s + rand(-0.9, 0.9), d[1] * s + rand(-0.2, 1.4), d[2] * s + rand(-0.9, 0.9)], {
+            life: rand(0.6, 1.3),
+            size: rand(0.05, 0.11),
+            sizeEnd: 0.03,
+            color: [0.72, 0.86, 0.96],
+            alpha: 0.85,
+            gravity: 9.8,
+          })
+        }
+        // A little glittering dust where it burst.
+        for (let i = 0; i < 4; i++) {
+          const p = points[(Math.random() * points.length) | 0]
+          sys.dust.spawn(p, [d[0] * 0.8 + rand(-0.4, 0.4), rand(-0.2, 0.3), d[2] * 0.8 + rand(-0.4, 0.4)], {
+            life: rand(0.5, 0.9),
+            size: 0.15,
+            sizeEnd: rand(0.5, 0.8),
+            color: [0.82, 0.86, 0.88],
+            alpha: 0.35,
+            drag: 2.5,
+          })
+        }
+      },
       puff(point) {
         const p = toArr(point)
         for (let i = 0; i < 14; i++) {
@@ -485,14 +520,15 @@ export function Effects() {
       }
       if (!pl.fire) return
       // Flames: tongues licking up from the seat, hot at the core, leaning downwind.
-      sys.fireAcc[i] += FLAME_RATE * step
+      const k = pl.scale ?? 1
+      sys.fireAcc[i] += FLAME_RATE * k * step
       while (sys.fireAcc[i] >= 1) {
         sys.fireAcc[i] -= 1
         const j = () => (Math.random() - 0.5) * pl.spread * 1.4
         const core = Math.random() < 0.35
-        sys.glow.spawn([pl.p[0] + j(), pl.p[1] - 0.3 + Math.random() * 0.2, pl.p[2] + j()], [PLUME_WIND[0] * 0.3 + j() * 0.4, 1.9 + Math.random() * 1.6, PLUME_WIND[2] * 0.3 + j() * 0.4], {
+        sys.glow.spawn([pl.p[0] + j(), pl.p[1] - 0.3 + Math.random() * 0.2, pl.p[2] + j()], [PLUME_WIND[0] * 0.3 + j() * 0.4, (1.9 + Math.random() * 1.6) * Math.sqrt(k), PLUME_WIND[2] * 0.3 + j() * 0.4], {
           life: rand(0.4, 0.8),
-          size: core ? rand(0.7, 1.1) : rand(1.1, 1.9),
+          size: (core ? rand(0.7, 1.1) : rand(1.1, 1.9)) * k,
           sizeEnd: 0.15,
           color: core ? FIRE_CORE : FIRE_OUTER,
           alpha: core ? 0.6 : 0.42,
@@ -500,9 +536,9 @@ export function Effects() {
         })
         // A solid orange body under the glow, so the fire still reads against bright haze.
         if (!core && Math.random() < 0.45) {
-          sys.plume.spawn([pl.p[0] + j() * 0.7, pl.p[1] - 0.2, pl.p[2] + j() * 0.7], [PLUME_WIND[0] * 0.3, 1.6 + Math.random(), PLUME_WIND[2] * 0.3], {
+          sys.plume.spawn([pl.p[0] + j() * 0.7, pl.p[1] - 0.2, pl.p[2] + j() * 0.7], [PLUME_WIND[0] * 0.3, (1.6 + Math.random()) * Math.sqrt(k), PLUME_WIND[2] * 0.3], {
             life: rand(0.35, 0.6),
-            size: rand(0.8, 1.3),
+            size: rand(0.8, 1.3) * k,
             sizeEnd: 0.3,
             color: FLAME_BODY,
             alpha: 0.85,
