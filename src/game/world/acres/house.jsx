@@ -23,6 +23,7 @@ function floorMaterial(kind) {
   if (kind === 'terrazzo') return acres.terrazzo()
   if (kind === 'tile') return acres.tile()
   if (kind === 'plank') return acres.plank()
+  if (kind === 'concrete') return acres.concrete()
   return acres.woodFloor()
 }
 
@@ -286,8 +287,10 @@ function buildHouse(h) {
     // Ridge cap and the gable ends.
     P.box(acres.roof(look.roof), cx, h.roof.ridge + 0.06, (h.z0 + h.z1) / 2, 0.34, 0.1, h.z1 - h.z0 + h.roof.overhang * 2 + 0.02, 1)
     const gable = gableGeometry(h.x0, h.x1, band, h.roof.ridge - 0.08, t)
-    P.add(upperSiding, gable, [0, 0, h.z0])
-    P.add(upperSiding, gable, [0, 0, h.z1 - t])
+    // (A lodge's gables can be cedar chevrons instead of its siding.)
+    const gableMat = look.gable === 'chevron' ? acres.chevron() : upperSiding
+    P.add(gableMat, gable, [0, 0, h.z0])
+    P.add(gableMat, gable, [0, 0, h.z1 - t])
     // A gable vent in each end.
     for (const z of [h.z0 - 0.02, h.z1 + 0.02]) P.box(trim, cx, band + (h.roof.ridge - band) * 0.4, z, 0.5, 0.5, 0.04, 1)
   }

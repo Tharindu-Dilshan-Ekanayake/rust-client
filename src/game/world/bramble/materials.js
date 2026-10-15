@@ -30,7 +30,7 @@ const std = (key, opts) => mat(key, () => new MeshStandardMaterial(opts))
  * derivatives, so nothing extra is stored. The hook is a method, not an own
  * property, so the static batcher still merges every tint into one draw.
  */
-class FoliageMaterial extends MeshStandardMaterial {
+export class FoliageMaterial extends MeshStandardMaterial {
   onBeforeCompile(shader) {
     shader.fragmentShader = shader.fragmentShader
       .replace(

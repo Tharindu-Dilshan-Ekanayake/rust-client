@@ -646,11 +646,23 @@ export class WeaponSystem {
   hud() {
     const w = this.weapon
     const a = this.ammo[w.id]
+    const p = this.ammo[this.cls.primary]
+    const s = this.ammo[this.cls.secondary]
     return {
       weapon: w.id,
       magSize: w.magSize ?? 0,
       mag: a ? a.mag : -1,
       reserve: a ? a.reserve : -1,
+      // The class's two guns and what's in each (the HUD shows all three weapons).
+      primary: this.cls.primary,
+      secondary: this.cls.secondary,
+      primaryMag: p ? p.mag : -1,
+      primaryReserve: p ? p.reserve : -1,
+      secondaryMag: s ? s.mag : -1,
+      secondaryReserve: s ? s.reserve : -1,
+      // When this reload began and how long it takes (the magazine bar fills over it).
+      reloadStart: this.reloadStart,
+      reloadTime: this.reloading ? this.reloadUntil - this.reloadStart : 0,
       lethal: this.lethal,
       lethalKind: this.lethalKind,
       c4Out: this.c4Out,

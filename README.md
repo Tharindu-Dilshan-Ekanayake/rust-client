@@ -2,7 +2,7 @@
 
 **Modern Guns** is a browser FPS built with React Three Fiber + Rapier, played
 with your **Bloxity** avatar. Up to 8 players per lobby, Team Deathmatch,
-Free-for-all or [Search & Destroy](#search--destroy), on seven maps (picked on
+Free-for-all or [Search & Destroy](#search--destroy), on eight maps (picked on
 the *Find a match* screen, see [Maps](#maps)).
 
 *Atomic Acres* (84 × 84 m, the default) is a 1950s test-site suburb. A school
@@ -67,23 +67,63 @@ trips on an enemy walking into its front). Tactical: flashbang or smoke.
 its guns (with a stat preview) → that gun's attachments, with a breadcrumb to
 jump back and Back / Esc to step up. The 3D preview and stats sit beside every
 step. Gun icons (menus, kill feed, HUD) are each gun's own side silhouette,
-drawn from its model (`ui/weaponIcons.js`).
+drawn from its model (`ui/weaponIcons.js`). In a match the bottom right of the
+HUD shows the class's three weapons that way (primary, secondary, knife): the
+one in hand bright and framed, the others dim, each gun's ammo under it; under
+them the magazine in hand, a segment a round (red when it's low), filling
+across while reloading; then its name and the lethal and tactical left.
 
 ## Maps
 
 Each map is data in `shared/` (`map.js` for Dustline, `mapAcres.js` for
 Atomic Acres, `mapPalmwood.js` for Palmwood, `mapHollow.js` for Hollow Creek,
 `mapQuarter.js` for Old Quarter, `mapBramble.js` for Bramblewood,
-`mapTerminal.js` for Skyport Terminal, helpers in `mapKit.js`), listed in
+`mapTerminal.js` for Skyport Terminal, `mapPinecrest.js` for Pinecrest Lodge,
+helpers in `mapKit.js`), listed in
 `shared/maps.js`: its colliders, ladders, spawns, resupply crates, bot
 navigation hints and bounds. The client draws the map on screen
 (`world/MapScene.jsx` → `world/DustlineMap.jsx`, `world/acres/`,
-`world/palmwood/`, `world/hollow/`, `world/quarter/`, `world/bramble/` or
-`world/terminal/`) with that map's sky and light
+`world/palmwood/`, `world/hollow/`, `world/quarter/`, `world/bramble/`,
+`world/terminal/` or `world/pinecrest/`) with that map's sky and light
 (`game/environment.js`) and sound (`game/ambience.js`); the minimap, ladders,
 effects and menu camera all follow the active map.
 
-- **Skyport Terminal** (112 × 112 m, the newest and the biggest): an airport
+- **Pinecrest Lodge** (100 × 100 m, the newest): a timber lodge in the
+  mountains on a bright autumn afternoon, birches turning gold among dark
+  pines, snowy peaks all round. South of the middle the lodge (two floors of
+  sage-green board and batten on a stone base, a cedar chevron gable, the
+  stairs up its west wall, its wing joined on each floor) and its gravel
+  courtyard with the cars; south-east the glasshouse (a white-framed barrel
+  vault of glass on a brick base, potting benches inside); south-west the stone
+  stable and a woodshed. A creek runs right across the map in a gully 3 m deep
+  you can drop into anywhere and climb out of anywhere (the banks are no
+  steeper than a bot can climb), with a waterfall pouring down a rock chute
+  near its east end (walkable both ways) and a cliff on its south bank below
+  it, climbed by a timber stair; cross on the road's concrete bridge, a plank
+  footbridge or planks in the bed, or walk under the bridges. North of it the
+  cedar guest cabin, two granite outcrops with ramps of rock up them, the blue
+  workshop (its yellow pickup in the garage) and the power substation
+  (chain-link hung with black tarps, transformers, a gantry); red lattice
+  pylons carry the line over the hills. West, the lake: the boathouse on the
+  bluff, its deck and a stair down to the dock and the rowing boat; you can
+  wade in the shallows. Search & Destroy: site A in the lodge's den, B in the
+  glasshouse's middle aisle; its glass breaks like the terminal's.
+  - The ground is one triangle mesh the physics and the renderer share
+    (`pinecrestGround()`): the gully, the lake shore, the outcrops, the hills
+    past the walls. The renderer splits it into granite (steep faces, the
+    outcrops, the fall's chute) and one splatted ground (fallen leaves, dry
+    meadow grass and gravel blended per vertex, the edges broken up by the
+    textures; vertex colours for wet and shade), one draw each.
+  - Built to load fast and run on anything: every texture is drawn with canvas
+    shapes in milliseconds (no per-pixel painting); all the leaves in the map
+    (birches, pines with folded boughs, bracken, grass, the woods on the hills)
+    are one alpha-tested atlas material drawn depth first; past the walls the
+    ground, the bands of distant woods and the mountains use the cheap Lambert
+    shader (the mountains unfogged, their haze painted in, kept under the near
+    hills); few shader variants (the lake shares the creek's, the foam the
+    fall's, the chain-link the woods'). On the test laptop it runs level with
+    Bramblewood (RTX 5050 ~130 fps, Radeon 780M ~75 fps at 1080p low).
+- **Skyport Terminal** (112 × 112 m, the biggest): an airport
   after a battle, at dusk under a pall of smoke. North, the terminal, an L: the
   main block (two floors, a double-height hall under skylights, escalators and
   a grand stair; check-in and security west, the shops, café and gate lounges
