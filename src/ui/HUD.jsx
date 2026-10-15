@@ -51,8 +51,44 @@ function HealthBox() {
 }
 
 /* ---------------------------------------------------------------------------
- * Bottom-right: ammo + equipment
+ * Bottom-right: the class's weapons, the magazine, the equipment
  * ------------------------------------------------------------------------- */
+
+/** One of the class's weapons: its silhouette, framed when it's the one in hand, its ammo under it. */
+function WeaponSlot({ id, active, mag, reserve, height, low }) {
+  const w = WEAPONS[id]
+  if (!w) return null
+  return (
+    <div className={`slot ${active ? 'on' : ''}`}>
+      <Icon name={id} height={height} maxWidth={height * 3.4} />
+      {w.fireMode !== 'melee' && (
+        <div className="ammo">
+          <span className={`n ${active && low ? 'low' : ''}`}>{Math.max(0, mag)}</span>
+          <span className="r">/{Math.max(0, reserve)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Most segments the magazine bar has: a bigger magazine gives each a few rounds. */
+const MAG_SEGMENTS = 30
+
+/** The magazine in hand, a segment a round (or a few), spent ones dim; it fills across while reloading. */
+function MagBar({ hud, w, low }) {
+  const size = hud.magSize || w?.magSize || 0
+  if (!size || w?.fireMode === 'melee') return <div className="magbar none" />
+  const segs = Math.min(size, MAG_SEGMENTS)
+  const left = Math.ceil(Math.max(0, hud.mag) / (size / segs) - 1e-6)
+  return (
+    <div className={`magbar ${low ? 'low' : ''}`}>
+      {Array.from({ length: segs }, (_, i) => (
+        <i key={i} className={i < left ? 'on' : ''} />
+      ))}
+      {hud.reloading && hud.reloadTime > 0 && <b key={hud.reloadStart} className="fill" style={{ animationDuration: `${hud.reloadTime}s` }} />}
+    </div>
+  )
+}
 
 function AmmoBox() {
   const hud = useGameStore((s) => s.hud)
@@ -61,36 +97,34 @@ function AmmoBox() {
   const low = !melee && hud.mag >= 0 && hud.mag <= Math.ceil((hud.magSize || w?.magSize || 30) * 0.25)
   return (
     <div className="dl-hud-box dl-ammo">
-      <div className="wname">
-        {hud.reloading ? <span style={{ color: 'var(--accent)', animation: 'dl-pulse 700ms infinite' }}>RELOADING · </span> : null}
-        {w?.name}
+      <div className="slots">
+        <WeaponSlot id={hud.primary} active={hud.weapon === hud.primary} mag={hud.primaryMag} reserve={hud.primaryReserve} height={30} low={low} />
+        <WeaponSlot id={hud.secondary} active={hud.weapon === hud.secondary} mag={hud.secondaryMag} reserve={hud.secondaryReserve} height={24} low={low} />
+        <WeaponSlot id="knife" active={melee} height={22} />
       </div>
-      {melee ? (
-        <div className="mag" style={{ fontSize: 34 }}>
-          ∞
+      <MagBar hud={hud} w={w} low={low} />
+      <div className="foot">
+        <div className="wname">
+          {hud.reloading ? <span className="reloading">RELOADING · </span> : null}
+          {w?.name}
         </div>
-      ) : (
-        <div>
-          <span className={`mag ${low ? 'low' : ''}`}>{hud.mag}</span>
-          <span className="res">/ {hud.reserve}</span>
-        </div>
-      )}
-      <div className="dl-equip">
-        {hud.c4Out ? (
-          <div className="item armed">
-            <span className="key">G</span>
-            <Icon name="detonator" height={16} />
-            Detonate
+        <div className="dl-equip">
+          {hud.c4Out ? (
+            <div className="item armed">
+              <span className="key">G</span>
+              <Icon name="detonator" height={16} />
+              Detonate
+            </div>
+          ) : (
+            <div className={`item ${hud.lethal > 0 ? '' : 'empty'}`}>
+              <span className="key">G</span>
+              <Icon name={hud.lethalKind} height={16} />×{hud.lethal}
+            </div>
+          )}
+          <div className={`item ${hud.tactical > 0 ? '' : 'empty'}`}>
+            <span className="key">Q</span>
+            <Icon name={hud.tacticalKind} height={16} />×{hud.tactical}
           </div>
-        ) : (
-          <div className={`item ${hud.lethal > 0 ? '' : 'empty'}`}>
-            <span className="key">G</span>
-            <Icon name={hud.lethalKind} height={16} />×{hud.lethal}
-          </div>
-        )}
-        <div className={`item ${hud.tactical > 0 ? '' : 'empty'}`}>
-          <span className="key">Q</span>
-          <Icon name={hud.tacticalKind} height={16} />×{hud.tactical}
         </div>
       </div>
     </div>

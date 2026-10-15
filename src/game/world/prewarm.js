@@ -3,11 +3,12 @@ import * as acres from './acres/textures.js'
 import * as bramble from './bramble/textures.js'
 import * as hollow from './hollow/textures.js'
 import * as palmwood from './palmwood/textures.js'
+import * as pinecrest from './pinecrest/textures.js'
 import * as quarter from './quarter/textures.js'
 import * as terminal from './terminal/textures.js'
 import * as dustline from './textures.js'
 
-const SETS = { acres, bramble, dustline, hollow, palmwood, quarter, terminal }
+const SETS = { acres, bramble, dustline, hollow, palmwood, pinecrest, quarter, terminal }
 let started = false
 
 /**

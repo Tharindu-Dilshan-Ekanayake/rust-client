@@ -4,12 +4,14 @@ import { chainLinkTexture, concreteTexture, rustTexture, sandTexture } from '../
 import {
   asphaltTexture,
   barricadeStripeTexture,
+  battenTexture,
   brickRedTexture,
   busSideTexture,
   busSignTexture,
   cardboardTexture,
   carpetTexture,
   checkerTexture,
+  chevronTexture,
   clockTexture,
   dirtTexture,
   fenceBoardTexture,
@@ -79,8 +81,13 @@ export const SIDING = {
   // Bramblewood's weathered farm buildings.
   weathered: { color: '#a49c8e' },
   barnGrey: { color: '#b4ac9c', tex: 'board' },
+  // Pinecrest's lodge and cabins: board and batten, sage green, weathered grey, cedar; the workshop's tin.
+  lodge: { color: '#6f8270', tex: 'batten' },
+  cabinGrey: { color: '#8a8a86', tex: 'batten' },
+  cedar: { color: '#a8764e', tex: 'batten' },
+  shedBlue: { color: '#b8c6cc', tex: 'panel' },
 }
-export const ROOFS = { slate: '#5d6873', charcoal: '#6b7480', red: '#a2483a', teal: '#3f817b', concrete: '#bdb8ae' }
+export const ROOFS = { slate: '#5d6873', charcoal: '#6b7480', red: '#a2483a', teal: '#3f817b', concrete: '#bdb8ae', shake: '#6a5c50' }
 export const TRIM = { white: '#f6f4ec', concrete: '#c9c4b8', teal: '#3f817b', bone: '#d9d2c2', walnut: '#4a3426' }
 export const SHUTTERS = { green: '#2f7d63', white: '#f6f4ec', black: '#24221f' }
 /** Inside walls per house and floor. */
@@ -106,7 +113,7 @@ export const acres = {
   siding: (name) => {
     const s = SIDING[name] ?? SIDING.white
     // 'board': vertical boards and battens (a barn), from the fence-board texture.
-    const map = s.tex === 'plaster' ? plasterTexture() : s.tex === 'panel' ? panelTexture() : s.tex === 'board' ? fenceBoardTexture() : sidingTexture()
+    const map = s.tex === 'plaster' ? plasterTexture() : s.tex === 'panel' ? panelTexture() : s.tex === 'board' ? fenceBoardTexture() : s.tex === 'batten' ? battenTexture() : sidingTexture()
     // Plaster-finished walls match the inside walls (same texture, same roughness).
     return std(`a:siding:${name}`, { map, color: s.color, roughness: s.tex === 'plaster' ? 0.92 : 0.85, metalness: 0 })
   },
@@ -134,6 +141,8 @@ export const acres = {
   flatRoof: () => std('a:flatRoof', { map: concreteTexture(), color: '#8e8c86', roughness: 0.95 }),
   stone: () => std('a:stone', { map: stoneTexture(), roughness: 0.95 }),
   brick: () => std('a:brick', { map: brickRedTexture(), roughness: 0.95 }),
+  /** Cedar chevron planking (Pinecrest's lodge gables). */
+  chevron: () => std('a:chevron', { map: chevronTexture(), roughness: 0.8 }),
   woodFloor: () => std('a:woodFloor', { map: woodFloorTexture(), roughness: 0.75 }),
   checker: () => std('a:checker', { map: checkerTexture(), roughness: 0.5 }),
   terrazzo: () => std('a:terrazzo', { map: terrazzoTexture(), roughness: 0.6 }),

@@ -20,7 +20,10 @@ export const STORM_WIND = [7.2, 0, 3.2]
  * over the picture; Skyport Terminal dusk after a battle: the sun low and red
  * in the west through a pall of smoke, the sky dark with it overhead, the
  * haze thick and brown; inside, the power out, only the light through the
- * glass and the holes; a drained, gritty grade with a vignette.
+ * glass and the holes; a drained, gritty grade with a vignette; Pinecrest
+ * Lodge a bright autumn afternoon in the mountains under high cloud: a soft
+ * warm sun, cool blue haze that deepens toward the far peaks, rich golds and
+ * dark pines, a light grade.
  */
 export const ENVIRONMENTS = {
   dustline: {
@@ -217,6 +220,37 @@ ENVIRONMENTS.terminal = {
     grain: 0.03,
     dust: [0.1, 0.085, 0.075],
     lift: 0.025,
+  },
+}
+
+ENVIRONMENTS.pinecrest = {
+  sunDir: new Vector3(-0.55, 0.6, 0.58).normalize(),
+  fog: '#c3cacb',
+  fogNear: 60,
+  fogFar: 520,
+  sky: { horizon: '#d0d6d6', mid: '#abbccb', zenith: '#7590ab', sun: '#fff0d8', storm: 0, below: [0.4, 0.4, 0.34] },
+  hemi: ['#dfe6ec', '#5a5036', 0.95],
+  // Warm bounce off the gold woods and the leaf litter.
+  bounce: ['#d8c8a4', 0.45],
+  ambient: ['#7a786c', 0.32],
+  sun: ['#ffeed4', 2.55],
+  envIntensity: 0.6,
+  storm: false,
+  shadowSpan: 64,
+  menuCam: { radius: 58, height: 22, look: [0, 3, 6] },
+  vm: { ambient: ['#7a786e', 0.35], hemi: ['#eef0f2', '#4c4632', 0.7], sun: ['#ffeed4', 1.12] },
+  // Light: a touch of warmth in the highlights and cool in the shadows, a soft vignette.
+  grade: {
+    exposure: 1.03,
+    contrast: 1.07,
+    saturation: 1.06,
+    shadowTint: [-0.004, 0.002, 0.01],
+    highlightTint: [0.02, 0.012, -0.01],
+    vignette: 0.16,
+    bleach: 0.03,
+    grain: 0.01,
+    dust: [0, 0, 0],
+    lift: 0.012,
   },
 }
 

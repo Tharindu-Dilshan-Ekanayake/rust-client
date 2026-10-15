@@ -87,6 +87,16 @@ const MAP_TIPS = {
     ['The sheds in the meadow and behind the houses', ' have ammo crates that refill everything.'],
     ['Rail fences', ' stop you, not bullets.'],
   ],
+  pinecrest: [
+    ['The creek’s gully is a trench', ' right across the map: drop in anywhere, and walk under the road’s bridge.'],
+    ['Search & Destroy:', ' bomb site A is in the lodge’s den downstairs, B in the glasshouse’s middle aisle.'],
+    ['Glass breaks.', ' The glasshouse’s panes shatter at the first bullet (or a knife); then you can shoot, or walk, through.'],
+    ['Climb the granite outcrops', ' up their ramps of rock to see over the woods.'],
+    ['The lodge has an upstairs', ' — the stairs run up its west wall, and the wing joins it through a door on each floor.'],
+    ['Below the waterfall', ' a timber stair climbs the cliff from the creek’s bed to the glasshouse.'],
+    ['The substation’s chain-link and the tarps on it', ' stop you, not bullets.'],
+    ['The boathouse and the workshop', ' have ammo crates that refill everything.'],
+  ],
 }
 const tipsFor = (mapId) => [...COMMON_TIPS, ...(MAP_TIPS[mapId] ?? [])]
 

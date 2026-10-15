@@ -826,40 +826,128 @@
   color: var(--accent);
   font-weight: 700;
 }
+/* The class's weapons, bottom right: each one's silhouette with its ammo under
+   it, the one in hand bright and framed, the others dim; under them the
+   magazine in hand, a segment a round (dim once spent, red when it's low,
+   filling across while reloading); then its name and the equipment. */
 .dl-ammo {
   right: 24px;
   bottom: 22px;
   min-width: 250px;
-  text-align: right;
+  padding: 9px 14px 9px;
   border-left: none;
   border-right: 2px solid var(--accent);
   background: linear-gradient(270deg, rgba(14, 16, 20, 0.75), rgba(14, 16, 20, 0.35));
+  --wsel: 120, 208, 232;
 }
-.dl-ammo .mag {
-  font-size: 54px;
+.dl-ammo .slots {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.dl-ammo .slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 6px 9px 5px;
+  color: rgba(232, 230, 225, 0.45);
+  border: 1.5px solid transparent;
+  transition:
+    color var(--fast),
+    border-color var(--fast),
+    background var(--fast);
+}
+.dl-ammo .slot > span {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+}
+.dl-ammo .slot.on {
+  color: #fff;
+  border-color: rgba(var(--wsel), 0.85);
+  background: linear-gradient(180deg, rgba(var(--wsel), 0.16), rgba(var(--wsel), 0.03));
+  box-shadow: 0 0 14px rgba(var(--wsel), 0.16);
+}
+.dl-ammo .ammo {
   font-weight: 700;
-  line-height: 0.9;
+  line-height: 1;
+  white-space: nowrap;
 }
-.dl-ammo .mag.low {
+.dl-ammo .ammo .n {
+  font-size: 15px;
+}
+.dl-ammo .slot.on .ammo .n {
+  font-size: 26px;
+}
+.dl-ammo .ammo .n.low {
   color: var(--bad);
 }
-.dl-ammo .res {
-  font-size: 22px;
+.dl-ammo .ammo .r {
+  font-size: 12px;
   color: var(--muted);
-  font-weight: 600;
-  margin-left: 6px;
+  margin-left: 2px;
+}
+.dl-ammo .slot.on .ammo .r {
+  font-size: 15px;
+}
+.dl-ammo .magbar {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  margin-top: 8px;
+}
+.dl-ammo .magbar.none {
+  visibility: hidden;
+}
+.dl-ammo .magbar i {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.12);
+}
+.dl-ammo .magbar i.on {
+  background: var(--text);
+}
+.dl-ammo .magbar.low i.on {
+  background: var(--bad);
+}
+.dl-ammo .magbar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(var(--wsel), 0.9);
+  animation: dl-mag-fill linear forwards;
+}
+@keyframes dl-mag-fill {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+.dl-ammo .foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 7px;
 }
 .dl-ammo .wname {
-  font-size: 15px;
+  font-size: 13px;
   letter-spacing: 2px;
   font-weight: 700;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+.dl-ammo .wname .reloading {
+  color: rgb(var(--wsel));
+  animation: dl-pulse 700ms infinite;
 }
 .dl-equip {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 8px;
 }
 .dl-equip .item {
   display: flex;

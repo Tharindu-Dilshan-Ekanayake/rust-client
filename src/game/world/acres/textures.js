@@ -336,6 +336,89 @@ export const fenceBoardTexture = () =>
     return finish(c)
   })
 
+/**
+ * Board and batten (Pinecrest's lodge and cabins): pale vertical boards, a
+ * dark gap and a batten over every joint, the grain and the weather on them.
+ * Near-white so the siding's colour tints it (sage green, cedar, grey).
+ */
+export const battenTexture = () =>
+  cached('acres:batten', () => {
+    const S = 256
+    const rand = seededRandom(421)
+    const c = canvas(S)
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#e6e2da'
+    ctx.fillRect(0, 0, S, S)
+    const boards = 4
+    const w = S / boards
+    for (let i = 0; i < boards; i++) {
+      const t = 205 + Math.floor(rand() * 40)
+      ctx.fillStyle = `rgb(${t},${t - 4},${t - 10})`
+      ctx.fillRect(i * w, 0, w, S)
+      // Grain: long faint streaks down the board.
+      for (let k = 0; k < 14; k++) {
+        ctx.fillStyle = `rgba(60,50,40,${0.04 + rand() * 0.06})`
+        ctx.fillRect(i * w + rand() * w, 0, 1 + rand() * 2, S)
+      }
+    }
+    // The batten over each joint: a raised strip, lit on one edge and shaded on the other.
+    for (let i = 0; i <= boards; i++) {
+      const x = i * w
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'
+      ctx.fillRect(x - 6, 0, 2, S)
+      ctx.fillStyle = '#d8d2c8'
+      ctx.fillRect(x - 4, 0, 8, S)
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.fillRect(x - 4, 0, 2, S)
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'
+      ctx.fillRect(x + 3, 0, 2, S)
+    }
+    // Weathering: darker toward the bottom, the odd stain.
+    const g = ctx.createLinearGradient(0, 0, 0, S)
+    g.addColorStop(0, 'rgba(0,0,0,0)')
+    g.addColorStop(1, 'rgba(40,34,26,0.18)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, S, S)
+    return finish(c)
+  })
+
+/**
+ * Chevron planking for the lodge's gables: orange-brown cedar boards laid in
+ * a herringbone of Vs, each a slightly different tone.
+ */
+export const chevronTexture = () =>
+  cached('acres:chevron', () => {
+    const S = 256
+    const rand = seededRandom(431)
+    const c = canvas(S)
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#9a5a2e'
+    ctx.fillRect(0, 0, S, S)
+    const tones = ['#b0683a', '#a65e32', '#bd7442', '#9c5730', '#c07a48']
+    const half = S / 2
+    const step = 16
+    for (const side of [0, 1]) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(side * half, 0, half, S)
+      ctx.clip()
+      ctx.translate(side * half + half / 2, 0)
+      ctx.transform(1, 0, side ? 1 : -1, 1, 0, 0)
+      for (let y = -S; y < S * 2; y += step) {
+        ctx.fillStyle = tones[Math.floor(rand() * tones.length)]
+        ctx.fillRect(-half, y, half * 2, step - 2)
+        ctx.fillStyle = 'rgba(40,20,8,0.5)'
+        ctx.fillRect(-half, y + step - 2, half * 2, 2)
+      }
+      ctx.restore()
+    }
+    // The seam down the middle of each V.
+    ctx.fillStyle = 'rgba(40,20,8,0.6)'
+    ctx.fillRect(half - 1, 0, 2, S)
+    ctx.fillRect(0, 0, 2, S)
+    return finish(c)
+  })
+
 /** Dense leaves for hedges and tree crowns. */
 export const leafTexture = () =>
   cached('acres:leaves', () => {
